@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Variable Width Hover Expansion</title>
+  <title>Layered Interactive p5.js Text Grid</title>
   <!-- p5.js library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
   <style>
@@ -14,230 +14,156 @@
 </head>
 <body>
   <script>
-    let words = [];   // Will be loaded from CSV
-    let wordTable;    // p5.Table object
+    let words = [];        // Array to hold words loaded from CSV
+    let wordTable;         // p5.Table object for the CSV data
 
-    // We'll store each word as a "cell" object:
-    // {
-    //   word: string,
-    //   baseW: number,  // measured base width of the text + padding
-    //   baseH: number,  // measured base height of the text + padding
-    //   x: number,
-    //   y: number,
-    //   localMult: number, // adjacency scaling
-    //   jostleSeedX: number, // random seeds for noise-based jostling
-    //   jostleSeedY: number
-    // }
-    let cells = [];
+    // Base cell dimensions (will be globally scaled)
+    let baseCellW = 80;
+    let baseCellH = 18;
+    let scaleFactor = 1;   // Global scale factor (adjustable with scroll wheel)
+    let cellW, cellH;      // Actual cell dimensions computed each frame
 
-    // Global scaling factor (mouse wheel)
-    let globalScale = 1;
+    // Noise settings for background effects
+    let noiseScale = 0.03;
+    let t = 0;
 
-    // Hover expansion multipliers
-    // d=0 => 3.0, d=1 => 2.0, d=2 => 1.5, d=3 => 1.25, else => 1.0
-    let expansionMap = [3.0, 2.0, 1.5, 1.25];
-
-    // Day (0) or Night (1)
+    // Mode: 0 = Day, 1 = Night
     let mode = 0;
 
-    // For slight jostle motion
-    let jostleSpeed = 0.01; // noise speed
-    let jostleAmp = 5;      // how many pixels to move
-
-    // Load the CSV in preload()
+    // Preload the CSV file with words
     function preload() {
-      // Make sure "words.csv" is in the same folder
+      // Expect a file "words.csv" in the same folder, with header "word"
       wordTable = loadTable('words.csv', 'csv', 'header');
     }
 
     function setup() {
       createCanvas(windowWidth, windowHeight);
-
       textAlign(LEFT, TOP);
-      textSize(12);
-
-      // Build the words array from the CSV
+      noStroke();
+      // Build the words array from the CSV file
       for (let i = 0; i < wordTable.getRowCount(); i++) {
-        words.push(wordTable.getString(i, 'word'));
-      }
-
-      // Measure each word’s base size and create a cell object
-      for (let i = 0; i < words.length; i++) {
-        let wStr = words[i];
-        let tw = textWidth(wStr);  
-        // Add some padding around the text
-        let baseW = tw + 10; 
-        let baseH = textAscent() + textDescent() + 6;
-
-        // Create a cell object
-        cells.push({
-          word: wStr,
-          baseW: baseW,
-          baseH: baseH,
-          x: 0,
-          y: 0,
-          localMult: 1,
-          jostleSeedX: random(1000),
-          jostleSeedY: random(1000),
-        });
+        words.push(wordTable.getString(i, "word"));
       }
     }
 
     function draw() {
-      // Background depends on mode
-      if (mode === 0) {
-        background(255); // Day = white
-        fill(0);         // black text by default
-      } else {
-        background(0);   // Night = black
-        fill(255);       // white text by default
+      // Update cell dimensions and text size based on the global scale factor
+      cellW = baseCellW * scaleFactor;
+      cellH = baseCellH * scaleFactor;
+      textSize(12 * scaleFactor);
+      background(255);
+
+      // Determine which grid cell the mouse is over
+      let mouseCol = floor(mouseX / cellW);
+      let mouseRow = floor(mouseY / cellH);
+
+      let cells = [];
+      let wordIndex = 0;
+      // Loop over grid cells and store their data in an array
+      for (let y = 0; y < height; y += cellH) {
+        for (let x = 0; x < width; x += cellW) {
+          // Compute noise value
+          let n = noise(x * noiseScale, y * noiseScale, t);
+          // Determine grid indices
+          let col = floor(x / cellW);
+          let row = floor(y / cellH);
+          // Calculate Chebyshev distance from the hovered cell
+          let d = max(abs(col - mouseCol), abs(row - mouseRow));
+
+          // Determine local scale multiplier based on distance
+          let localMult = 1.0;
+          if (d === 0) {
+            localMult = 3.0;
+          } else if (d === 1) {
+            localMult = 2.0;
+          } else if (d === 2) {
+            localMult = 1.5;
+          } else if (d === 3) {
+            localMult = 1.25;
+          }
+
+          // Save cell data (include the word from the CSV order)
+          cells.push({
+            x: x,
+            y: y,
+            n: n,
+            d: d,
+            localMult: localMult,
+            word: words[wordIndex]
+          });
+          wordIndex = (wordIndex + 1) % words.length;
+        }
       }
 
-      // 1) Determine which cell is under the mouse (if any)
-      let hoverIndex = findHoverIndex();
-
-      // 2) Assign local scale multipliers based on adjacency
-      //    Because this is a single row, adjacency = next/previous indices
-      assignLocalMultipliers(hoverIndex);
-
-      // 3) Compute positions left to right, taking into account scaling
-      layoutCells();
-
-      // 4) Sort cells by localMult so that the largest (hovered) is drawn last (on top)
+      // Sort cells by local multiplier (lowest drawn first, highest on top)
       cells.sort((a, b) => a.localMult - b.localMult);
 
-      // 5) Draw cells
-      drawCells();
-    }
-
-    // Finds which cell is under the mouse. Returns its index, or -1 if none
-    function findHoverIndex() {
-      // We'll need to do a pass to see if the mouse is inside a cell's bounding box
-      // after scaling. Because we push them around, we must do the layout first or do
-      // a quick approximate layout. However, for simplicity, we can do a rough pass:
-      //  - layout the cells as if localMult=1 for all
-      //  - then check bounding boxes with scale
-      // But we want the real final positions. So let's do:
-      //   1) temporarily set localMult=1 for all
-      //   2) layout them
-      //   3) check bounding boxes
-      //   4) pick the topmost if overlap (i.e. rightmost in the array)
-      // This is not perfect if multiple expansions overlap, but let's keep it simpler.
-
-      // Step 1: set localMult=1, layout
-      for (let c of cells) {
-        c.localMult = 1;
-      }
-      layoutCells();
-
-      // Step 2: find any cell under the mouse
-      let foundIndex = -1;
-      for (let i = 0; i < cells.length; i++) {
-        let c = cells[i];
-        // We'll guess the bounding box by scaled width/height if hovered
-        // but we haven't scaled them yet. Let's do an approximate check:
-        let w = c.baseW * globalScale;
-        let h = c.baseH * globalScale;
-        // Add jostle
-        let xJ = xJostle(c);
-        let yJ = yJostle(c);
-
-        if (
-          mouseX >= c.x + xJ &&
-          mouseX <= c.x + xJ + w &&
-          mouseY >= c.y + yJ &&
-          mouseY <= c.y + yJ + h
-        ) {
-          foundIndex = i;
-        }
-      }
-      return foundIndex;
-    }
-
-    // Assign local multipliers based on how far each cell’s index is from the hovered cell
-    function assignLocalMultipliers(hoverIndex) {
-      if (hoverIndex < 0) {
-        // No hover
-        for (let c of cells) {
-          c.localMult = 1;
-        }
-        return;
-      }
-
-      for (let i = 0; i < cells.length; i++) {
-        let dist = abs(i - hoverIndex);
-        if (dist < expansionMap.length) {
-          cells[i].localMult = expansionMap[dist];
-        } else {
-          cells[i].localMult = 1.0;
-        }
-      }
-    }
-
-    // Layout cells in a single row, left to right, pushing neighbors so edges touch
-    function layoutCells() {
-      let xPos = 10;  // start with some left margin
-      let yPos = height / 2; // place them vertically centered (roughly)
-
-      for (let i = 0; i < cells.length; i++) {
-        let c = cells[i];
-        // scaled width
-        let sw = c.baseW * globalScale * c.localMult;
-        let sh = c.baseH * globalScale * c.localMult;
-
-        c.x = xPos;
-        // We keep all at same y
-        c.y = yPos - sh / 2; // center them vertically around yPos
-
-        xPos += sw; // move the next cell’s x to the right edge of this one + 0 spacing
-      }
-    }
-
-    // Draw cells in the sorted order
-    function drawCells() {
-      // Because we sorted them by localMult ascending, the biggest is last => on top
-      for (let c of cells) {
+      // Draw each cell from the sorted array
+      cells.forEach(cell => {
         push();
-        translate(c.x + xJostle(c), c.y + yJostle(c));
-        scale(c.localMult * globalScale);
+        // Translate to the cell center and apply the local scaling multiplier
+        translate(cell.x + cellW / 2, cell.y + cellH / 2);
+        scale(cell.localMult);
 
-        // For day mode, text is black; for night mode, text is white
-        // The background is the entire canvas color. 
-        // If you want each text to have a box behind it, you can do:
-        // fill(mode === 0 ? 255 : 0);
-        // rect(0, 0, c.baseW, c.baseH);
-        // then set fill(mode === 0 ? 0 : 255) for the text.
-
-        if (c.localMult >= 3) {
+        // Choose colors based on mode and noise value
+        if (mode === 0) {
+          // Day mode: default colors
+          if (cell.n < 0.33) {
+            fill(0); // black background
+            rect(-cellW/2, -cellH/2, cellW, cellH);
+            fill(255, 237, 0); // yellow text
+          } else if (cell.n < 0.66) {
+            fill(255, 237, 0); // yellow background
+            rect(-cellW/2, -cellH/2, cellW, cellH);
+            fill(0); // black text
+          } else {
+            fill(255); // white background
+            rect(-cellW/2, -cellH/2, cellW, cellH);
+            fill(0); // black text
+          }
+        } else {
+          // Night mode: using blue = rgb(0,146,212)
+          if (cell.n < 0.33) {
+            fill(255); // white background
+            rect(-cellW/2, -cellH/2, cellW, cellH);
+            fill(0, 146, 212); // blue text
+          } else if (cell.n < 0.66) {
+            fill(0, 146, 212); // blue background
+            rect(-cellW/2, -cellH/2, cellW, cellH);
+            fill(255); // white text
+          } else {
+            fill(0); // black background
+            rect(-cellW/2, -cellH/2, cellW, cellH);
+            fill(255); // white text
+          }
+        }
+        
+        // If this cell is directly under the mouse, set text to bold.
+        if (cell.d === 0) {
           textStyle(BOLD);
         } else {
           textStyle(NORMAL);
         }
-
-        text(c.word, 5, 3); 
+        // Draw the text with a slight offset relative to the cell's top left.
+        text(cell.word, -cellW/2 + 2, -cellH/2 + 2);
         pop();
-      }
+      });
+      t += 0.005; // Animate noise over time
     }
 
-    // Small jostle offsets using noise
-    function xJostle(c) {
-      return (noise(c.jostleSeedX + frameCount * jostleSpeed) - 0.5) * jostleAmp;
-    }
-    function yJostle(c) {
-      return (noise(c.jostleSeedY + frameCount * jostleSpeed) - 0.5) * jostleAmp;
-    }
-
-    // Toggle day/night on mouse click
+    // Toggle between day and night mode on mouse click.
     function mousePressed() {
       mode = (mode + 1) % 2;
     }
 
-    // Mouse wheel zoom
+    // Adjust the global scale factor with the mouse wheel.
     function mouseWheel(event) {
-      globalScale = constrain(globalScale - event.delta * 0.001, 0.5, 5);
-      return false; // prevent page scroll
+      // Adjust scaleFactor; constrain between 0.5 and 5.
+      scaleFactor = constrain(scaleFactor - event.delta * 0.001, 0.5, 5);
+      return false; // Prevent default scroll behavior.
     }
 
+    // Resize canvas when the window is resized.
     function windowResized() {
       resizeCanvas(windowWidth, windowHeight);
     }
