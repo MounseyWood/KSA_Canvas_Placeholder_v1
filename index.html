@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Interactive p5.js Text Grid with Hover Scaling</title>
+  <title>Interactive p5.js Text Grid with Stronger Hover Effects</title>
   <!-- p5.js library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
   <style>
@@ -21,13 +21,13 @@
       "H&M", "Hugo Boss", "ZARA", "Tommy Hilfiger", "Timberland", "Lululemon", "Adidas", "Nike",
       "Gymshark", "Reiss", "Kestin", "Oliver Spencer", "Dries van Noten", "Martin Margiela",
       "Donna Karan", "Ralph Lauren", "Calvin Klien", "Armani", "Lacoste", "All Saints", "COS", "ASOS",
-      // You can add more words as desired.
+      // You can add more words as desired or pull them from an external file.
     ];
 
     // Base cell dimensions (will be globally scaled)
     let baseCellW = 80;
     let baseCellH = 18;
-    let scaleFactor = 1; // Global scale factor from scroll wheel
+    let scaleFactor = 1; // Global scale factor (adjustable with the scroll wheel)
     let cellW, cellH;    // Actual cell dimensions computed each frame
 
     // Noise settings for background effects
@@ -38,7 +38,7 @@
     let mode = 0;
 
     function setup() {
-      createCanvas(800, 600);
+      createCanvas(windowWidth, windowHeight);
       textAlign(LEFT, TOP);
       noStroke();
     }
@@ -64,17 +64,18 @@
           // Determine grid indices of the current cell
           let col = floor(x / cellW);
           let row = floor(y / cellH);
-          // Calculate grid distance (Chebyshev distance)
+          // Use Chebyshev distance to the hovered cell
           let d = max(abs(col - mouseCol), abs(row - mouseRow));
 
-          // Determine local scale multiplier based on proximity
+          // Determine local scale multiplier based on proximity:
+          // d == 0: strongest effect, then diminishing
           let localMult = 1.0;
           if (d === 0) {
-            localMult = 2.0;
+            localMult = 3.0;
           } else if (d === 1) {
-            localMult = 1.5;
+            localMult = 2.0;
           } else if (d === 2) {
-            localMult = 1.25;
+            localMult = 1.5;
           }
 
           // Save the current transformation state
@@ -101,7 +102,7 @@
               fill(0); // black text
             }
           } else {
-            // Night mode: adjust blue to rgb(0,146,212)
+            // Night mode: use blue = rgb(0,146,212)
             if (n < 0.33) {
               fill(255); // white background
               rect(-cellW/2, -cellH/2, cellW, cellH);
@@ -117,7 +118,13 @@
             }
           }
           
-          // Draw the text with a slight offset (adjusted relative to the cell's top left)
+          // If this cell is directly under the mouse, draw the text in bold
+          if (d === 0) {
+            textStyle(BOLD);
+          } else {
+            textStyle(NORMAL);
+          }
+          // Draw the text with a slight offset relative to the cell's top left
           text(words[wordIndex], -cellW/2 + 2, -cellH/2 + 2);
           wordIndex = (wordIndex + 1) % words.length;
           // Restore transformation
@@ -137,6 +144,11 @@
       // Adjust scaleFactor; constrain between 0.5 and 5
       scaleFactor = constrain(scaleFactor - event.delta * 0.001, 0.5, 5);
       return false; // Prevent default scroll behavior
+    }
+
+    // Resize canvas when the window is resized
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight);
     }
   </script>
 </body>
