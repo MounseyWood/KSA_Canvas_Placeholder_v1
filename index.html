@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>p5.js Text Grid</title>
+  <!-- p5.js library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+  <script>
+    let words = [
+      "Prada", "Gucci", "YSL", "Dior", "Phoebe Philo", "Roland Mouret", "Phobe English",
+      "Paul Smith", "Dunhill", "Community Clothing", "Vivienne Westwood", "Jigsaw", "Toast",
+      "H&M", "Hugo Boss", "ZARA", "Tommy Hilfiger", "Timberland", "Lululemon", "Adidas", "Nike",
+      "Gymshark", "Reiss", "Kestin", "Oliver Spencer", "Dries van Noten", "Martin Margiela",
+      "Donna Karan", "Ralph Lauren", "Calvin Klien", "Armani", "Lacoste", "All Saints", "COS", "ASOS",
+      // Add as many words as you like or pull them from an external file.
+      // The more words, the more interesting the fill.
+    ];
+
+    // Grid cell dimensions
+    let cellW = 80;   // width of each text cell
+    let cellH = 18;   // height of each text cell
+
+    // Noise scale & time variable for smooth transitions
+    let noiseScale = 0.03;
+    let t = 0;
+
+    function setup() {
+      createCanvas(800, 600);
+      textSize(12);
+      textAlign(LEFT, TOP);
+      noStroke();
+    }
+
+    function draw() {
+      background(255); // We'll redraw the entire canvas each frame
+
+      // We’ll fill the canvas with text, cell by cell
+      let wordIndex = 0;
+      for (let y = 0; y < height; y += cellH) {
+        for (let x = 0; x < width; x += cellW) {
+          // Get a noise value at this cell’s position + time
+          let n = noise(x * noiseScale, y * noiseScale, t);
+
+          // We’ll use thresholds in the noise value to decide
+          // which color combination to use:
+          //  - 0.0 to 0.33 => black background, yellow text
+          //  - 0.33 to 0.66 => yellow background, black text
+          //  - 0.66 to 1.0 => white background, black text
+          if (n < 0.33) {
+            fill(0);               // black background
+            rect(x, y, cellW, cellH);
+            fill(255, 237, 0);     // yellow text
+          } else if (n < 0.66) {
+            fill(255, 237, 0);     // yellow background
+            rect(x, y, cellW, cellH);
+            fill(0);               // black text
+          } else {
+            fill(255);             // white background
+            rect(x, y, cellW, cellH);
+            fill(0);               // black text
+          }
+
+          // Draw the text from the words array
+          text(words[wordIndex], x + 2, y + 2);
+          // Move to the next word, wrap around if needed
+          wordIndex = (wordIndex + 1) % words.length;
+        }
+      }
+
+      // Increase time to animate the noise pattern
+      t += 0.005;
+    }
+  </script>
+</body>
+</html>
