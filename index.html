@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Interactive p5.js Text Grid</title>
+  <title>Interactive p5.js Text Grid with Hover Scaling</title>
   <!-- p5.js library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
   <style>
@@ -14,23 +14,23 @@
 </head>
 <body>
   <script>
-    // Word array for the text grid
+    // Array of words for the grid
     let words = [
       "Prada", "Gucci", "YSL", "Dior", "Phoebe Philo", "Roland Mouret", "Phobe English",
       "Paul Smith", "Dunhill", "Community Clothing", "Vivienne Westwood", "Jigsaw", "Toast",
       "H&M", "Hugo Boss", "ZARA", "Tommy Hilfiger", "Timberland", "Lululemon", "Adidas", "Nike",
       "Gymshark", "Reiss", "Kestin", "Oliver Spencer", "Dries van Noten", "Martin Margiela",
       "Donna Karan", "Ralph Lauren", "Calvin Klien", "Armani", "Lacoste", "All Saints", "COS", "ASOS",
-      // Add as many words as you like or pull them from an external file.
+      // You can add more words as desired.
     ];
 
-    // Base cell dimensions (will be scaled)
+    // Base cell dimensions (will be globally scaled)
     let baseCellW = 80;
     let baseCellH = 18;
-    let scaleFactor = 1; // Global scale factor for cell & text size
-    let cellW, cellH;    // Actual cell dimensions
+    let scaleFactor = 1; // Global scale factor from scroll wheel
+    let cellW, cellH;    // Actual cell dimensions computed each frame
 
-    // Noise settings
+    // Noise settings for background effects
     let noiseScale = 0.03;
     let t = 0;
 
@@ -44,70 +44,99 @@
     }
 
     function draw() {
-      // Update cell dimensions and text size based on the current scale factor
+      // Update cell dimensions and text size based on the global scale factor
       cellW = baseCellW * scaleFactor;
       cellH = baseCellH * scaleFactor;
       textSize(12 * scaleFactor);
       background(255);
 
+      // Determine which grid cell the mouse is over
+      let mouseCol = floor(mouseX / cellW);
+      let mouseRow = floor(mouseY / cellH);
+
       let wordIndex = 0;
-      // Loop through the grid and draw each cell
+      // Loop over grid cells
       for (let y = 0; y < height; y += cellH) {
         for (let x = 0; x < width; x += cellW) {
+          // Compute noise based on original position
           let n = noise(x * noiseScale, y * noiseScale, t);
 
-          // Use different color schemes for day and night modes
-          if (mode === 0) {
-            // Day mode
-            if (n < 0.33) {
-              fill(0);              // black background
-              rect(x, y, cellW, cellH);
-              fill(255, 237, 0);    // yellow text
-            } else if (n < 0.66) {
-              fill(255, 237, 0);    // yellow background
-              rect(x, y, cellW, cellH);
-              fill(0);              // black text
-            } else {
-              fill(255);            // white background
-              rect(x, y, cellW, cellH);
-              fill(0);              // black text
-            }
-          } else {
-            // Night mode (inverted style)
-            if (n < 0.33) {
-              fill(255);            // white background
-              rect(x, y, cellW, cellH);
-              fill(0, 146, 212);    // blue-ish text
-            } else if (n < 0.66) {
-              fill(0, 146, 212);    // blue-ish background
-              rect(x, y, cellW, cellH);
-              fill(255);            // white text
-            } else {
-              fill(0);              // black background
-              rect(x, y, cellW, cellH);
-              fill(255);            // white text
-            }
+          // Determine grid indices of the current cell
+          let col = floor(x / cellW);
+          let row = floor(y / cellH);
+          // Calculate grid distance (Chebyshev distance)
+          let d = max(abs(col - mouseCol), abs(row - mouseRow));
+
+          // Determine local scale multiplier based on proximity
+          let localMult = 1.0;
+          if (d === 0) {
+            localMult = 2.0;
+          } else if (d === 1) {
+            localMult = 1.5;
+          } else if (d === 2) {
+            localMult = 1.25;
           }
 
-          // Draw the text with a slight offset
-          text(words[wordIndex], x + 2 * scaleFactor, y + 2 * scaleFactor);
+          // Save the current transformation state
+          push();
+          // Translate to the center of the cell
+          translate(x + cellW / 2, y + cellH / 2);
+          // Apply the local scaling multiplier
+          scale(localMult);
+
+          // Choose colors based on mode and noise
+          if (mode === 0) {
+            // Day mode: default color combinations
+            if (n < 0.33) {
+              fill(0); // black background
+              rect(-cellW/2, -cellH/2, cellW, cellH);
+              fill(255, 237, 0); // yellow text
+            } else if (n < 0.66) {
+              fill(255, 237, 0); // yellow background
+              rect(-cellW/2, -cellH/2, cellW, cellH);
+              fill(0); // black text
+            } else {
+              fill(255); // white background
+              rect(-cellW/2, -cellH/2, cellW, cellH);
+              fill(0); // black text
+            }
+          } else {
+            // Night mode: adjust blue to rgb(0,146,212)
+            if (n < 0.33) {
+              fill(255); // white background
+              rect(-cellW/2, -cellH/2, cellW, cellH);
+              fill(0, 146, 212); // text with new blue shade
+            } else if (n < 0.66) {
+              fill(0, 146, 212); // blue background
+              rect(-cellW/2, -cellH/2, cellW, cellH);
+              fill(255); // white text
+            } else {
+              fill(0); // black background
+              rect(-cellW/2, -cellH/2, cellW, cellH);
+              fill(255); // white text
+            }
+          }
+          
+          // Draw the text with a slight offset (adjusted relative to the cell's top left)
+          text(words[wordIndex], -cellW/2 + 2, -cellH/2 + 2);
           wordIndex = (wordIndex + 1) % words.length;
+          // Restore transformation
+          pop();
         }
       }
-      t += 0.005; // Increment time for noise animation
+      t += 0.005; // Animate noise over time
     }
 
-    // Toggle between day and night modes on mouse click
+    // Toggle between day and night mode on mouse click
     function mousePressed() {
       mode = (mode + 1) % 2;
     }
 
-    // Adjust the scale factor when scrolling (mouse wheel or finger scroll)
+    // Adjust the global scale factor with the mouse wheel
     function mouseWheel(event) {
-      // Use the wheel delta to adjust scaleFactor; constrain it between 0.5 and 5
+      // Adjust scaleFactor; constrain between 0.5 and 5
       scaleFactor = constrain(scaleFactor - event.delta * 0.001, 0.5, 5);
-      // Prevent default scrolling behavior
-      return false;
+      return false; // Prevent default scroll behavior
     }
   </script>
 </body>
