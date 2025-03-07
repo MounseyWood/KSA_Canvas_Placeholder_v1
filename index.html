@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>p5.js Text Grid</title>
+  <title>Interactive p5.js Text Grid</title>
   <!-- p5.js library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
   <style>
@@ -14,6 +14,7 @@
 </head>
 <body>
   <script>
+    // Word array for the text grid
     let words = [
       "Prada", "Gucci", "YSL", "Dior", "Phoebe Philo", "Roland Mouret", "Phobe English",
       "Paul Smith", "Dunhill", "Community Clothing", "Vivienne Westwood", "Jigsaw", "Toast",
@@ -21,62 +22,92 @@
       "Gymshark", "Reiss", "Kestin", "Oliver Spencer", "Dries van Noten", "Martin Margiela",
       "Donna Karan", "Ralph Lauren", "Calvin Klien", "Armani", "Lacoste", "All Saints", "COS", "ASOS",
       // Add as many words as you like or pull them from an external file.
-      // The more words, the more interesting the fill.
     ];
 
-    // Grid cell dimensions
-    let cellW = 80;   // width of each text cell
-    let cellH = 18;   // height of each text cell
+    // Base cell dimensions (will be scaled)
+    let baseCellW = 80;
+    let baseCellH = 18;
+    let scaleFactor = 1; // Global scale factor for cell & text size
+    let cellW, cellH;    // Actual cell dimensions
 
-    // Noise scale & time variable for smooth transitions
+    // Noise settings
     let noiseScale = 0.03;
     let t = 0;
 
+    // Mode: 0 = Day, 1 = Night
+    let mode = 0;
+
     function setup() {
       createCanvas(800, 600);
-      textSize(12);
       textAlign(LEFT, TOP);
       noStroke();
     }
 
     function draw() {
-      background(255); // We'll redraw the entire canvas each frame
+      // Update cell dimensions and text size based on the current scale factor
+      cellW = baseCellW * scaleFactor;
+      cellH = baseCellH * scaleFactor;
+      textSize(12 * scaleFactor);
+      background(255);
 
-      // We’ll fill the canvas with text, cell by cell
       let wordIndex = 0;
+      // Loop through the grid and draw each cell
       for (let y = 0; y < height; y += cellH) {
         for (let x = 0; x < width; x += cellW) {
-          // Get a noise value at this cell’s position + time
           let n = noise(x * noiseScale, y * noiseScale, t);
 
-          // We’ll use thresholds in the noise value to decide
-          // which color combination to use:
-          //  - 0.0 to 0.33 => black background, yellow text
-          //  - 0.33 to 0.66 => yellow background, black text
-          //  - 0.66 to 1.0 => white background, black text
-          if (n < 0.33) {
-            fill(0);               // black background
-            rect(x, y, cellW, cellH);
-            fill(255, 237, 0);     // yellow text
-          } else if (n < 0.66) {
-            fill(255, 237, 0);     // yellow background
-            rect(x, y, cellW, cellH);
-            fill(0);               // black text
+          // Use different color schemes for day and night modes
+          if (mode === 0) {
+            // Day mode
+            if (n < 0.33) {
+              fill(0);              // black background
+              rect(x, y, cellW, cellH);
+              fill(255, 237, 0);    // yellow text
+            } else if (n < 0.66) {
+              fill(255, 237, 0);    // yellow background
+              rect(x, y, cellW, cellH);
+              fill(0);              // black text
+            } else {
+              fill(255);            // white background
+              rect(x, y, cellW, cellH);
+              fill(0);              // black text
+            }
           } else {
-            fill(255);             // white background
-            rect(x, y, cellW, cellH);
-            fill(0);               // black text
+            // Night mode (inverted style)
+            if (n < 0.33) {
+              fill(255);            // white background
+              rect(x, y, cellW, cellH);
+              fill(0, 102, 204);    // blue-ish text
+            } else if (n < 0.66) {
+              fill(0, 102, 204);    // blue-ish background
+              rect(x, y, cellW, cellH);
+              fill(255);            // white text
+            } else {
+              fill(0);              // black background
+              rect(x, y, cellW, cellH);
+              fill(255);            // white text
+            }
           }
 
-          // Draw the text from the words array
-          text(words[wordIndex], x + 2, y + 2);
-          // Move to the next word, wrap around if needed
+          // Draw the text with a slight offset
+          text(words[wordIndex], x + 2 * scaleFactor, y + 2 * scaleFactor);
           wordIndex = (wordIndex + 1) % words.length;
         }
       }
+      t += 0.005; // Increment time for noise animation
+    }
 
-      // Increase time to animate the noise pattern
-      t += 0.005;
+    // Toggle between day and night modes on mouse click
+    function mousePressed() {
+      mode = (mode + 1) % 2;
+    }
+
+    // Adjust the scale factor when scrolling (mouse wheel or finger scroll)
+    function mouseWheel(event) {
+      // Use the wheel delta to adjust scaleFactor; constrain it between 0.5 and 5
+      scaleFactor = constrain(scaleFactor - event.delta * 0.001, 0.5, 5);
+      // Prevent default scrolling behavior
+      return false;
     }
   </script>
 </body>
