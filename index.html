@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Interactive p5.js Text Grid with Stronger Hover Effects</title>
+  <title>Layered Interactive p5.js Text Grid</title>
   <!-- p5.js library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
   <style>
@@ -14,21 +14,14 @@
 </head>
 <body>
   <script>
-    // Array of words for the grid
-    let words = [
-      "Prada", "Gucci", "YSL", "Dior", "Phoebe Philo", "Roland Mouret", "Phobe English",
-      "Paul Smith", "Dunhill", "Community Clothing", "Vivienne Westwood", "Jigsaw", "Toast",
-      "H&M", "Hugo Boss", "ZARA", "Tommy Hilfiger", "Timberland", "Lululemon", "Adidas", "Nike",
-      "Gymshark", "Reiss", "Kestin", "Oliver Spencer", "Dries van Noten", "Martin Margiela",
-      "Donna Karan", "Ralph Lauren", "Calvin Klien", "Armani", "Lacoste", "All Saints", "COS", "ASOS",
-      // You can add more words as desired or pull them from an external file.
-    ];
+    let words = [];        // Array to hold words loaded from CSV
+    let wordTable;         // p5.Table object for the CSV data
 
     // Base cell dimensions (will be globally scaled)
     let baseCellW = 80;
     let baseCellH = 18;
-    let scaleFactor = 1; // Global scale factor (adjustable with the scroll wheel)
-    let cellW, cellH;    // Actual cell dimensions computed each frame
+    let scaleFactor = 1;   // Global scale factor (adjustable with scroll wheel)
+    let cellW, cellH;      // Actual cell dimensions computed each frame
 
     // Noise settings for background effects
     let noiseScale = 0.03;
@@ -37,10 +30,20 @@
     // Mode: 0 = Day, 1 = Night
     let mode = 0;
 
+    // Preload the CSV file with words
+    function preload() {
+      // Expect a file "words.csv" in the same folder, with header "word"
+      wordTable = loadTable('words.csv', 'csv', 'header');
+    }
+
     function setup() {
       createCanvas(windowWidth, windowHeight);
       textAlign(LEFT, TOP);
       noStroke();
+      // Build the words array from the CSV file
+      for (let i = 0; i < wordTable.getRowCount(); i++) {
+        words.push(wordTable.getString(i, "word"));
+      }
     }
 
     function draw() {
@@ -54,21 +57,20 @@
       let mouseCol = floor(mouseX / cellW);
       let mouseRow = floor(mouseY / cellH);
 
+      let cells = [];
       let wordIndex = 0;
-      // Loop over grid cells
+      // Loop over grid cells and store their data in an array
       for (let y = 0; y < height; y += cellH) {
         for (let x = 0; x < width; x += cellW) {
-          // Compute noise based on original position
+          // Compute noise value
           let n = noise(x * noiseScale, y * noiseScale, t);
-
-          // Determine grid indices of the current cell
+          // Determine grid indices
           let col = floor(x / cellW);
           let row = floor(y / cellH);
-          // Use Chebyshev distance to the hovered cell
+          // Calculate Chebyshev distance from the hovered cell
           let d = max(abs(col - mouseCol), abs(row - mouseRow));
 
-          // Determine local scale multiplier based on proximity:
-          // d == 0: strongest effect, then diminishing
+          // Determine local scale multiplier based on distance
           let localMult = 1.0;
           if (d === 0) {
             localMult = 3.0;
@@ -76,77 +78,92 @@
             localMult = 2.0;
           } else if (d === 2) {
             localMult = 1.5;
+          } else if (d === 3) {
+            localMult = 1.25;
           }
 
-          // Save the current transformation state
-          push();
-          // Translate to the center of the cell
-          translate(x + cellW / 2, y + cellH / 2);
-          // Apply the local scaling multiplier
-          scale(localMult);
-
-          // Choose colors based on mode and noise
-          if (mode === 0) {
-            // Day mode: default color combinations
-            if (n < 0.33) {
-              fill(0); // black background
-              rect(-cellW/2, -cellH/2, cellW, cellH);
-              fill(255, 237, 0); // yellow text
-            } else if (n < 0.66) {
-              fill(255, 237, 0); // yellow background
-              rect(-cellW/2, -cellH/2, cellW, cellH);
-              fill(0); // black text
-            } else {
-              fill(255); // white background
-              rect(-cellW/2, -cellH/2, cellW, cellH);
-              fill(0); // black text
-            }
-          } else {
-            // Night mode: use blue = rgb(0,146,212)
-            if (n < 0.33) {
-              fill(255); // white background
-              rect(-cellW/2, -cellH/2, cellW, cellH);
-              fill(0, 146, 212); // text with new blue shade
-            } else if (n < 0.66) {
-              fill(0, 146, 212); // blue background
-              rect(-cellW/2, -cellH/2, cellW, cellH);
-              fill(255); // white text
-            } else {
-              fill(0); // black background
-              rect(-cellW/2, -cellH/2, cellW, cellH);
-              fill(255); // white text
-            }
-          }
-          
-          // If this cell is directly under the mouse, draw the text in bold
-          if (d === 0) {
-            textStyle(BOLD);
-          } else {
-            textStyle(NORMAL);
-          }
-          // Draw the text with a slight offset relative to the cell's top left
-          text(words[wordIndex], -cellW/2 + 2, -cellH/2 + 2);
+          // Save cell data (include the word from the CSV order)
+          cells.push({
+            x: x,
+            y: y,
+            n: n,
+            d: d,
+            localMult: localMult,
+            word: words[wordIndex]
+          });
           wordIndex = (wordIndex + 1) % words.length;
-          // Restore transformation
-          pop();
         }
       }
+
+      // Sort cells by local multiplier (lowest drawn first, highest on top)
+      cells.sort((a, b) => a.localMult - b.localMult);
+
+      // Draw each cell from the sorted array
+      cells.forEach(cell => {
+        push();
+        // Translate to the cell center and apply the local scaling multiplier
+        translate(cell.x + cellW / 2, cell.y + cellH / 2);
+        scale(cell.localMult);
+
+        // Choose colors based on mode and noise value
+        if (mode === 0) {
+          // Day mode: default colors
+          if (cell.n < 0.33) {
+            fill(0); // black background
+            rect(-cellW/2, -cellH/2, cellW, cellH);
+            fill(255, 237, 0); // yellow text
+          } else if (cell.n < 0.66) {
+            fill(255, 237, 0); // yellow background
+            rect(-cellW/2, -cellH/2, cellW, cellH);
+            fill(0); // black text
+          } else {
+            fill(255); // white background
+            rect(-cellW/2, -cellH/2, cellW, cellH);
+            fill(0); // black text
+          }
+        } else {
+          // Night mode: using blue = rgb(0,146,212)
+          if (cell.n < 0.33) {
+            fill(255); // white background
+            rect(-cellW/2, -cellH/2, cellW, cellH);
+            fill(0, 146, 212); // blue text
+          } else if (cell.n < 0.66) {
+            fill(0, 146, 212); // blue background
+            rect(-cellW/2, -cellH/2, cellW, cellH);
+            fill(255); // white text
+          } else {
+            fill(0); // black background
+            rect(-cellW/2, -cellH/2, cellW, cellH);
+            fill(255); // white text
+          }
+        }
+        
+        // If this cell is directly under the mouse, set text to bold.
+        if (cell.d === 0) {
+          textStyle(BOLD);
+        } else {
+          textStyle(NORMAL);
+        }
+        // Draw the text with a slight offset relative to the cell's top left.
+        text(cell.word, -cellW/2 + 2, -cellH/2 + 2);
+        pop();
+      });
       t += 0.005; // Animate noise over time
     }
 
-    // Toggle between day and night mode on mouse click
+    // Toggle between day and night mode on mouse click.
     function mousePressed() {
       mode = (mode + 1) % 2;
     }
 
-    // Adjust the global scale factor with the mouse wheel
+    // Adjust the global scale factor with the mouse wheel.
     function mouseWheel(event) {
-      // Adjust scaleFactor; constrain between 0.5 and 5
+      // Adjust scaleFactor; constrain between 0.5 and 5.
       scaleFactor = constrain(scaleFactor - event.delta * 0.001, 0.5, 5);
-      return false; // Prevent default scroll behavior
+      return false; // Prevent default scroll behavior.
     }
 
-    // Resize canvas when the window is resized
+    // Resize canvas when the window is resized.
     function windowResized() {
       resizeCanvas(windowWidth, windowHeight);
     }
