@@ -6,9 +6,11 @@
     <title>Interactive Text Camouflage</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/papaparse/5.3.0/papaparse.min.js"></script>
     <style>
-        body {
+        html, body {
             margin: 0;
             padding: 0;
+            width: 100%;
+            height: 100%;
             background-color: #000000;
             overflow: hidden;
             font-family: Arial, sans-serif;
@@ -16,9 +18,9 @@
         
         .container {
             position: relative;
-            width: 100vw;
+            width: 100%;
             height: 100vh;
-            background-color: #FFF200;
+            background-color: #fff200;
             overflow: hidden;
         }
         
@@ -42,114 +44,88 @@
         }
         
         .word:hover {
-            color: #FFFFFF;
+            color: #ffffff;
             font-weight: bold;
         }
-        
-        .silhouette {
+
+        .loading {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-        }
-        
-        .footer {
-            position: absolute;
-            bottom: 10px;
-            width: 100%;
-            text-align: center;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 20px;
-        }
-        
-        .footer div {
-            background-color: rgba(255, 255, 255, 0.7);
-            padding: 5px 10px;
-            border-radius: 3px;
-            font-size: 12px;
-            font-weight: bold;
-        }
-        
-        .logo {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background-color: rgba(0, 0, 0, 0.7);
-            color: white;
-            padding: 5px 10px;
-            border-radius: 3px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #000000;
+            font-size: 24px;
             font-weight: bold;
         }
     </style>
 </head>
 <body>
     <div class="container" id="container">
-        <div class="text-layer" id="textLayer"></div>
-        <div class="silhouette" id="silhouette"></div>
-        <div class="logo">INTERACTIVE DEMO</div>
-        <div class="footer">
-            <div>COMPANY</div>
-            <div>SPONSOR</div>
-            <div>BRAND</div>
-            <div>PARTNER</div>
+        <div class="text-layer" id="textLayer">
+            <div class="loading">Loading words...</div>
         </div>
     </div>
 
     <script>
-        // We'll load words from the CSV file
+        // Array to store words from CSV
         let words = [];
         let wordsLoaded = false;
 
-        // Function to load words from CSV
-        async function loadWordsFromCSV() {
-            try {
-                const response = await window.fs.readFile('words.csv', { encoding: 'utf8' });
-                const parsedData = Papa.parse(response, {
-                    header: true,
-                    skipEmptyLines: true
+        // Function to load words from CSV file
+        function loadWordsFromCSV() {
+            fetch('words.csv')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('CSV file not found');
+                    }
+                    return response.text();
+                })
+                .then(csvData => {
+                    // Parse CSV data using PapaParse
+                    const results = Papa.parse(csvData, {
+                        header: true,
+                        skipEmptyLines: true
+                    });
+                    
+                    // Extract words from the parsed data
+                    // This tries multiple approaches to find the words in the CSV
+                    if (results.data && results.data.length > 0) {
+                        // Try to find a column named 'word' or the first column
+                        words = results.data.map(row => {
+                            // If there's a column named 'word', use that
+                            if (row.word) return row.word;
+                            // If there's a column named 'Word', use that
+                            if (row.Word) return row.Word;
+                            // Otherwise use the first value
+                            return Object.values(row)[0];
+                        }).filter(word => word && word.trim() !== '');
+                    }
+                    
+                    // If no words were found, use some defaults
+                    if (words.length === 0) {
+                        words = ["Placeholder", "Example", "Default", "Backup", "Word"];
+                        console.warn("No words found in CSV. Using default words.");
+                    } else {
+                        console.log(`Successfully loaded ${words.length} words from CSV`);
+                    }
+                    
+                    wordsLoaded = true;
+                    
+                    // Now create the text pattern
+                    createTextPattern();
+                    addInteractivity();
+                })
+                .catch(error => {
+                    console.error("Error loading CSV:", error);
+                    
+                    // Use default words if CSV loading fails
+                    words = ["Placeholder", "Example", "Default", "Backup", "Word"];
+                    wordsLoaded = true;
+                    
+                    // Create the text pattern even if there was an error
+                    createTextPattern();
+                    addInteractivity();
                 });
-                
-                // Extract words from the parsed data
-                words = parsedData.data.map(row => row.word || Object.values(row)[0]).filter(word => word);
-                
-                // If no words were found or loaded properly, use some default fashion brands
-                if (words.length === 0) {
-                    words = ["Prada", "Gucci", "YSL", "Dior", "Phoebe Philo", "Roland Mouret", 
-                             "Paul Smith", "Dunhill", "Vivienne Westwood", "Jigsaw", "Toast", 
-                             "H&M", "Hugo Boss", "ZARA", "Tommy Hilfiger", "Timberland", 
-                             "Lululemon", "Adidas", "Nike", "Gymshark", "Reiss", "Kestin", 
-                             "Oliver Spencer", "Dries van Noten", "Martin Margiela", "Donna Karan",
-                             "Ralph Lauren", "Calvin Klein", "Armani", "Lacoste", "All Saints", 
-                             "COS", "ASOS"];
-                }
-                
-                wordsLoaded = true;
-                console.log("Words loaded from CSV:", words.length);
-                
-                // Now create the text pattern
-                createTextPattern();
-                createSilhouette();
-                addInteractivity();
-            } catch (error) {
-                console.error("Error loading CSV:", error);
-                words = ["Prada", "Gucci", "YSL", "Dior", "Phoebe Philo", "Roland Mouret", 
-                         "Paul Smith", "Dunhill", "Vivienne Westwood", "Jigsaw", "Toast", 
-                         "H&M", "Hugo Boss", "ZARA", "Tommy Hilfiger", "Timberland", 
-                         "Lululemon", "Adidas", "Nike", "Gymshark", "Reiss", "Kestin", 
-                         "Oliver Spencer", "Dries van Noten", "Martin Margiela", "Donna Karan",
-                         "Ralph Lauren", "Calvin Klein", "Armani", "Lacoste", "All Saints", 
-                         "COS", "ASOS"];
-                wordsLoaded = true;
-                
-                // Create the text pattern even if there was an error
-                createTextPattern();
-                createSilhouette();
-                addInteractivity();
-            }
         }
 
         // Function to generate random words
@@ -168,55 +144,14 @@
             const textLayer = document.getElementById('textLayer');
             let content = '';
             
-            // Generate enough words to fill the screen
-            for (let i = 0; i < 2000; i++) {
+            // Generate enough words to fill the screen - based on screen size
+            const wordCount = Math.ceil((window.innerWidth * window.innerHeight) / 2000);
+            
+            for (let i = 0; i < wordCount; i++) {
                 content += `<span class="word" style="font-weight: ${getRandomWeight()}">${getRandomWord()}</span>`;
             }
             
             textLayer.innerHTML = content;
-        }
-
-        // Create silhouette shapes
-        function createSilhouette() {
-            const silhouette = document.getElementById('silhouette');
-            const container = document.getElementById('container');
-            const width = container.offsetWidth;
-            const height = container.offsetHeight;
-            
-            // Create SVG for the silhouette
-            const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-            svg.setAttribute("width", "100%");
-            svg.setAttribute("height", "100%");
-            svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-            
-            // Create a path for an animal-like silhouette
-            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-            
-            // Create a simple animal silhouette - this is a generic shape, not copying any specific design
-            const centerX = width / 2;
-            const centerY = height / 2;
-            const size = Math.min(width, height) * 0.6;
-            
-            // Generate random points for the silhouette
-            let pathData = `M ${centerX},${centerY - size/3}`;
-            
-            for (let angle = 0; angle < Math.PI * 2; angle += 0.1) {
-                const radius = size * (0.5 + Math.random() * 0.5);
-                const x = centerX + Math.cos(angle) * radius;
-                const y = centerY + Math.sin(angle) * radius;
-                pathData += ` L ${x},${y}`;
-            }
-            
-            pathData += " Z";
-            
-            path.setAttribute("d", pathData);
-            path.setAttribute("fill", "none");
-            path.setAttribute("stroke", "rgba(0,0,0,0.05)");
-            path.setAttribute("stroke-width", "150");
-            path.setAttribute("stroke-linejoin", "round");
-            
-            svg.appendChild(path);
-            silhouette.appendChild(svg);
         }
 
         // Add interactivity
@@ -229,7 +164,7 @@
                     if (Math.random() < 0.3) {
                         const nearbyWords = Array.from(words).filter(() => Math.random() < 0.05);
                         nearbyWords.forEach(nearby => {
-                            nearby.style.color = '#FFFFFF';
+                            nearby.style.color = '#ffffff';
                             setTimeout(() => {
                                 nearby.style.color = '#000000';
                             }, 500 + Math.random() * 1000);
@@ -242,7 +177,7 @@
                     const rippleEffect = () => {
                         const nearbyWords = Array.from(words).filter(() => Math.random() < 0.1);
                         nearbyWords.forEach(nearby => {
-                            nearby.style.color = '#FFFFFF';
+                            nearby.style.color = '#ffffff';
                             setTimeout(() => {
                                 nearby.style.color = '#000000';
                             }, 200 + Math.random() * 800);
@@ -277,18 +212,21 @@
             });
         }
 
+        // Handle window resize
+        function handleResize() {
+            if (wordsLoaded) {
+                createTextPattern();
+                addInteractivity();
+            }
+        }
+
         // Initialize the pattern
         window.onload = function() {
             // Load words from CSV first, then create the pattern
             loadWordsFromCSV();
             
             // Add window resize handler
-            window.addEventListener('resize', () => {
-                if (wordsLoaded) {
-                    document.getElementById('silhouette').innerHTML = '';
-                    createSilhouette();
-                }
-            });
+            window.addEventListener('resize', handleResize);
         };
     </script>
 </body>
