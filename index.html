@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Interactive Text Camouflage</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/papaparse/5.3.0/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/papaparse/5.3.0/papaparse.min.js" integrity="sha512-ymgUftodXDCZ5tIW7Vn7Ixq4xDdfbFa9ztBNHsGAreJxoNZ8KiYgniG6sc0IkcmXkn6n/9+pQ8uiw2fv3DW4D+g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <style>
         html, body {
             margin: 0;
@@ -122,21 +122,44 @@
                 const path = possiblePaths[index];
                 console.log(`Attempting to load from: ${path}`);
                 
+                updateLoadingStatus(`Trying path: ${path}`);
                 fetch(path)
                     .then(response => {
                         if (!response.ok) {
                             throw new Error(`CSV file not found at ${path}`);
                         }
+                        updateLoadingStatus(`Found file at: ${path}`);
                         return response.text();
                     })
                     .then(csvData => {
                         console.log(`Successfully fetched CSV from ${path}`);
                         
                         // Parse CSV data using PapaParse
-                        const results = Papa.parse(csvData, {
-                            header: true,
-                            skipEmptyLines: true
-                        });
+                        let results;
+                        try {
+                            if (typeof Papa === 'undefined') {
+                                throw new Error("Papa Parse is not available");
+                            }
+                            results = Papa.parse(csvData, {
+                                header: true,
+                                skipEmptyLines: true
+                            });
+                        } catch (parseError) {
+                            console.error("Error parsing CSV:", parseError);
+                            // If we can't parse, just use the raw text and split by lines
+                            const lines = csvData.split(/\r?\n/).filter(line => line.trim() !== '');
+                            if (lines.length > 1) {
+                                // Assume first line is header, use rest as words
+                                words = lines.slice(1).map(line => line.trim());
+                                console.log(`Manually parsed ${words.length} words from CSV`);
+                                wordsLoaded = true;
+                                createTextPattern();
+                                addInteractivity();
+                                return;
+                            } else {
+                                throw new Error("CSV file format unrecognized");
+                            }
+                        }
                         
                         // Check if we have any data
                         if (results.data && results.data.length > 0) {
@@ -217,6 +240,13 @@
             // Generate enough words to fill the screen based on calculated density
             const wordCount = calculateWordDensity();
             
+            // If we somehow have no words (should never happen due to defaults), use placeholders
+            if (!words || words.length === 0) {
+                console.error("No words available for pattern creation");
+                words = ["Word", "Text", "Content"];
+            }
+            
+            // Create the text pattern
             for (let i = 0; i < wordCount; i++) {
                 content += `<span class="word" style="font-weight: ${getRandomWeight()}">${getRandomWord()}</span>`;
             }
@@ -290,8 +320,53 @@
             }
         }
 
+        // Check if Papa Parse is loaded
+        function checkPapaParseLoaded() {
+            if (typeof Papa === 'undefined') {
+                console.error("Papa Parse library not loaded. Attempting to load it manually.");
+                const script = document.createElement('script');
+                script.src = "https://cdnjs.cloudflare.com/ajax/libs/papaparse/5.3.0/papaparse.min.js";
+                script.integrity = "sha512-ymgUftodXDCZ5tIW7Vn7Ixq4xDdfbFa9ztBNHsGReJxoNZ8KiYgniG6sc0IkcmXkn6n/9+pQ8uiw2fv3DW4D+g==";
+                script.crossOrigin = "anonymous";
+                script.referrerPolicy = "no-referrer";
+                script.onload = function() {
+                    console.log("Papa Parse loaded manually");
+                    loadWordsFromCSV();
+                };
+                script.onerror = function() {
+                    console.error("Failed to load Papa Parse. Using default words.");
+                    words = defaultWords;
+                    wordsLoaded = true;
+                    createTextPattern();
+                    addInteractivity();
+                };
+                document.head.appendChild(script);
+                return false;
+            }
+            return true;
+        }
+
+        // Function to proceed with initialization, with CSV parsing fallback
+        function initializeWithoutPapaParse() {
+            console.log("Initializing without PapaParse - using hard-coded words");
+            // Use our default words since we can't parse CSV
+            words = defaultWords;
+            wordsLoaded = true;
+            createTextPattern();
+            addInteractivity();
+        }
+
         // Initialize the pattern
         window.onload = function() {
+            updateLoadingStatus("Checking if CSV parser is loaded...");
+            
+            // First check if Papa Parse is loaded
+            if (!checkPapaParseLoaded()) {
+                console.log("Waiting for Papa Parse to load");
+                // The callback in checkPapaParseLoaded will handle initialization
+                return;
+            }
+            
             // Load words from CSV first, then create the pattern
             loadWordsFromCSV();
             
