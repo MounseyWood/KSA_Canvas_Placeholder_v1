@@ -1,172 +1,295 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Layered Interactive p5.js Text Grid</title>
-  <!-- p5.js library -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
-  <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-    }
-  </style>
-</head>
-<body>
-  <script>
-    let words = [];        // Array to hold words loaded from CSV
-    let wordTable;         // p5.Table object for the CSV data
-
-    // Base cell dimensions (will be globally scaled)
-    let baseCellW = 80;
-    let baseCellH = 18;
-    let scaleFactor = 1;   // Global scale factor (adjustable with scroll wheel)
-    let cellW, cellH;      // Actual cell dimensions computed each frame
-
-    // Noise settings for background effects
-    let noiseScale = 0.03;
-    let t = 0;
-
-    // Mode: 0 = Day, 1 = Night
-    let mode = 0;
-
-    // Preload the CSV file with words
-    function preload() {
-      // Expect a file "words.csv" in the same folder, with header "word"
-      wordTable = loadTable('words.csv', 'csv', 'header');
-    }
-
-    function setup() {
-      createCanvas(windowWidth, windowHeight);
-      textAlign(LEFT, TOP);
-      noStroke();
-      // Build the words array from the CSV file
-      for (let i = 0; i < wordTable.getRowCount(); i++) {
-        words.push(wordTable.getString(i, "word"));
-      }
-    }
-
-    function draw() {
-      // Update cell dimensions and text size based on the global scale factor
-      cellW = baseCellW * scaleFactor;
-      cellH = baseCellH * scaleFactor;
-      textSize(12 * scaleFactor);
-      background(255);
-
-      // Determine which grid cell the mouse is over
-      let mouseCol = floor(mouseX / cellW);
-      let mouseRow = floor(mouseY / cellH);
-
-      let cells = [];
-      let wordIndex = 0;
-      // Loop over grid cells and store their data in an array
-      for (let y = 0; y < height; y += cellH) {
-        for (let x = 0; x < width; x += cellW) {
-          // Compute noise value
-          let n = noise(x * noiseScale, y * noiseScale, t);
-          // Determine grid indices
-          let col = floor(x / cellW);
-          let row = floor(y / cellH);
-          // Calculate Chebyshev distance from the hovered cell
-          let d = max(abs(col - mouseCol), abs(row - mouseRow));
-
-          // Determine local scale multiplier based on distance
-          let localMult = 1.0;
-          if (d === 0) {
-            localMult = 3.0;
-          } else if (d === 1) {
-            localMult = 2.0;
-          } else if (d === 2) {
-            localMult = 1.5;
-          } else if (d === 3) {
-            localMult = 1.25;
-          }
-
-          // Save cell data (include the word from the CSV order)
-          cells.push({
-            x: x,
-            y: y,
-            n: n,
-            d: d,
-            localMult: localMult,
-            word: words[wordIndex]
-          });
-          wordIndex = (wordIndex + 1) % words.length;
-        }
-      }
-
-      // Sort cells by local multiplier (lowest drawn first, highest on top)
-      cells.sort((a, b) => a.localMult - b.localMult);
-
-      // Draw each cell from the sorted array
-      cells.forEach(cell => {
-        push();
-        // Translate to the cell center and apply the local scaling multiplier
-        translate(cell.x + cellW / 2, cell.y + cellH / 2);
-        scale(cell.localMult);
-
-        // Choose colors based on mode and noise value
-        if (mode === 0) {
-          // Day mode: default colors
-          if (cell.n < 0.33) {
-            fill(0); // black background
-            rect(-cellW/2, -cellH/2, cellW, cellH);
-            fill(255, 237, 0); // yellow text
-          } else if (cell.n < 0.66) {
-            fill(255, 237, 0); // yellow background
-            rect(-cellW/2, -cellH/2, cellW, cellH);
-            fill(0); // black text
-          } else {
-            fill(255); // white background
-            rect(-cellW/2, -cellH/2, cellW, cellH);
-            fill(0); // black text
-          }
-        } else {
-          // Night mode: using blue = rgb(0,146,212)
-          if (cell.n < 0.33) {
-            fill(255); // white background
-            rect(-cellW/2, -cellH/2, cellW, cellH);
-            fill(0, 146, 212); // blue text
-          } else if (cell.n < 0.66) {
-            fill(0, 146, 212); // blue background
-            rect(-cellW/2, -cellH/2, cellW, cellH);
-            fill(255); // white text
-          } else {
-            fill(0); // black background
-            rect(-cellW/2, -cellH/2, cellW, cellH);
-            fill(255); // white text
-          }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Text Camouflage</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/papaparse/5.3.0/papaparse.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000000;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
         }
         
-        // If this cell is directly under the mouse, set text to bold.
-        if (cell.d === 0) {
-          textStyle(BOLD);
-        } else {
-          textStyle(NORMAL);
+        .container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            background-color: #FFF200;
+            overflow: hidden;
         }
-        // Draw the text with a slight offset relative to the cell's top left.
-        text(cell.word, -cellW/2 + 2, -cellH/2 + 2);
-        pop();
-      });
-      t += 0.005; // Animate noise over time
-    }
+        
+        .text-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+            line-height: 1.2;
+        }
+        
+        .word {
+            display: inline-block;
+            margin-right: 5px;
+            color: #000000;
+            cursor: pointer;
+            transition: color 0.2s, font-weight 0.2s;
+        }
+        
+        .word:hover {
+            color: #FFFFFF;
+            font-weight: bold;
+        }
+        
+        .silhouette {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        
+        .footer {
+            position: absolute;
+            bottom: 10px;
+            width: 100%;
+            text-align: center;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .footer div {
+            background-color: rgba(255, 255, 255, 0.7);
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        
+        .logo {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="container">
+        <div class="text-layer" id="textLayer"></div>
+        <div class="silhouette" id="silhouette"></div>
+        <div class="logo">INTERACTIVE DEMO</div>
+        <div class="footer">
+            <div>COMPANY</div>
+            <div>SPONSOR</div>
+            <div>BRAND</div>
+            <div>PARTNER</div>
+        </div>
+    </div>
 
-    // Toggle between day and night mode on mouse click.
-    function mousePressed() {
-      mode = (mode + 1) % 2;
-    }
+    <script>
+        // We'll load words from the CSV file
+        let words = [];
+        let wordsLoaded = false;
 
-    // Adjust the global scale factor with the mouse wheel.
-    function mouseWheel(event) {
-      // Adjust scaleFactor; constrain between 0.5 and 5.
-      scaleFactor = constrain(scaleFactor - event.delta * 0.001, 0.5, 5);
-      return false; // Prevent default scroll behavior.
-    }
+        // Function to load words from CSV
+        async function loadWordsFromCSV() {
+            try {
+                const response = await window.fs.readFile('words.csv', { encoding: 'utf8' });
+                const parsedData = Papa.parse(response, {
+                    header: true,
+                    skipEmptyLines: true
+                });
+                
+                // Extract words from the parsed data
+                words = parsedData.data.map(row => row.word || Object.values(row)[0]).filter(word => word);
+                
+                // If no words were found or loaded properly, use some default fashion brands
+                if (words.length === 0) {
+                    words = ["Prada", "Gucci", "YSL", "Dior", "Phoebe Philo", "Roland Mouret", 
+                             "Paul Smith", "Dunhill", "Vivienne Westwood", "Jigsaw", "Toast", 
+                             "H&M", "Hugo Boss", "ZARA", "Tommy Hilfiger", "Timberland", 
+                             "Lululemon", "Adidas", "Nike", "Gymshark", "Reiss", "Kestin", 
+                             "Oliver Spencer", "Dries van Noten", "Martin Margiela", "Donna Karan",
+                             "Ralph Lauren", "Calvin Klein", "Armani", "Lacoste", "All Saints", 
+                             "COS", "ASOS"];
+                }
+                
+                wordsLoaded = true;
+                console.log("Words loaded from CSV:", words.length);
+                
+                // Now create the text pattern
+                createTextPattern();
+                createSilhouette();
+                addInteractivity();
+            } catch (error) {
+                console.error("Error loading CSV:", error);
+                words = ["Prada", "Gucci", "YSL", "Dior", "Phoebe Philo", "Roland Mouret", 
+                         "Paul Smith", "Dunhill", "Vivienne Westwood", "Jigsaw", "Toast", 
+                         "H&M", "Hugo Boss", "ZARA", "Tommy Hilfiger", "Timberland", 
+                         "Lululemon", "Adidas", "Nike", "Gymshark", "Reiss", "Kestin", 
+                         "Oliver Spencer", "Dries van Noten", "Martin Margiela", "Donna Karan",
+                         "Ralph Lauren", "Calvin Klein", "Armani", "Lacoste", "All Saints", 
+                         "COS", "ASOS"];
+                wordsLoaded = true;
+                
+                // Create the text pattern even if there was an error
+                createTextPattern();
+                createSilhouette();
+                addInteractivity();
+            }
+        }
 
-    // Resize canvas when the window is resized.
-    function windowResized() {
-      resizeCanvas(windowWidth, windowHeight);
-    }
-  </script>
+        // Function to generate random words
+        function getRandomWord() {
+            return words[Math.floor(Math.random() * words.length)];
+        }
+
+        // Function to get random font weight
+        function getRandomWeight() {
+            const weights = [300, 400, 500, 600, 700];
+            return weights[Math.floor(Math.random() * weights.length)];
+        }
+
+        // Function to create text pattern
+        function createTextPattern() {
+            const textLayer = document.getElementById('textLayer');
+            let content = '';
+            
+            // Generate enough words to fill the screen
+            for (let i = 0; i < 2000; i++) {
+                content += `<span class="word" style="font-weight: ${getRandomWeight()}">${getRandomWord()}</span>`;
+            }
+            
+            textLayer.innerHTML = content;
+        }
+
+        // Create silhouette shapes
+        function createSilhouette() {
+            const silhouette = document.getElementById('silhouette');
+            const container = document.getElementById('container');
+            const width = container.offsetWidth;
+            const height = container.offsetHeight;
+            
+            // Create SVG for the silhouette
+            const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            svg.setAttribute("width", "100%");
+            svg.setAttribute("height", "100%");
+            svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+            
+            // Create a path for an animal-like silhouette
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            
+            // Create a simple animal silhouette - this is a generic shape, not copying any specific design
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const size = Math.min(width, height) * 0.6;
+            
+            // Generate random points for the silhouette
+            let pathData = `M ${centerX},${centerY - size/3}`;
+            
+            for (let angle = 0; angle < Math.PI * 2; angle += 0.1) {
+                const radius = size * (0.5 + Math.random() * 0.5);
+                const x = centerX + Math.cos(angle) * radius;
+                const y = centerY + Math.sin(angle) * radius;
+                pathData += ` L ${x},${y}`;
+            }
+            
+            pathData += " Z";
+            
+            path.setAttribute("d", pathData);
+            path.setAttribute("fill", "none");
+            path.setAttribute("stroke", "rgba(0,0,0,0.05)");
+            path.setAttribute("stroke-width", "150");
+            path.setAttribute("stroke-linejoin", "round");
+            
+            svg.appendChild(path);
+            silhouette.appendChild(svg);
+        }
+
+        // Add interactivity
+        function addInteractivity() {
+            const words = document.querySelectorAll('.word');
+            
+            words.forEach(word => {
+                word.addEventListener('mouseover', () => {
+                    // Random chance of triggering nearby words for a "ripple" effect
+                    if (Math.random() < 0.3) {
+                        const nearbyWords = Array.from(words).filter(() => Math.random() < 0.05);
+                        nearbyWords.forEach(nearby => {
+                            nearby.style.color = '#FFFFFF';
+                            setTimeout(() => {
+                                nearby.style.color = '#000000';
+                            }, 500 + Math.random() * 1000);
+                        });
+                    }
+                });
+                
+                word.addEventListener('click', () => {
+                    // Create a ripple effect on click
+                    const rippleEffect = () => {
+                        const nearbyWords = Array.from(words).filter(() => Math.random() < 0.1);
+                        nearbyWords.forEach(nearby => {
+                            nearby.style.color = '#FFFFFF';
+                            setTimeout(() => {
+                                nearby.style.color = '#000000';
+                            }, 200 + Math.random() * 800);
+                        });
+                    };
+                    
+                    // Create multiple ripples
+                    for (let i = 0; i < 5; i++) {
+                        setTimeout(rippleEffect, i * 100);
+                    }
+                });
+            });
+            
+            // Add mouse movement effect
+            document.addEventListener('mousemove', (e) => {
+                const x = e.clientX;
+                const y = e.clientY;
+                
+                // Find words near the cursor
+                words.forEach(word => {
+                    const rect = word.getBoundingClientRect();
+                    const wordX = rect.left + rect.width / 2;
+                    const wordY = rect.top + rect.height / 2;
+                    
+                    const distance = Math.sqrt(Math.pow(x - wordX, 2) + Math.pow(y - wordY, 2));
+                    
+                    if (distance < 100) {
+                        const intensity = 1 - distance / 100;
+                        word.style.fontWeight = Math.floor(400 + intensity * 300);
+                    }
+                });
+            });
+        }
+
+        // Initialize the pattern
+        window.onload = function() {
+            // Load words from CSV first, then create the pattern
+            loadWordsFromCSV();
+            
+            // Add window resize handler
+            window.addEventListener('resize', () => {
+                if (wordsLoaded) {
+                    document.getElementById('silhouette').innerHTML = '';
+                    createSilhouette();
+                }
+            });
+        };
+    </script>
 </body>
 </html>
