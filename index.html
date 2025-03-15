@@ -12,7 +12,6 @@
             padding: 0;
             width: 100%;
             height: 100%;
-            background-color: #000000;
             overflow: hidden;
             font-family: Arial, sans-serif;
         }
@@ -34,6 +33,9 @@
             font-size: 24px;
             font-weight: bold;
             text-align: center;
+            background-color: black;
+            padding: 20px;
+            border-radius: 10px;
         }
     </style>
 </head>
@@ -67,36 +69,11 @@
             let noiseScale = 0.03;
             let t = 0; // time variable to animate the noise
             
-            // Interactive elements
-            let mouseInteractionRadius = 100;
-            let interactiveWords = [];
-            let hoveredCells = [];
-            
-            // Cell tracking for interactivity
-            class Cell {
-                constructor(x, y, w, h, word, colorScheme) {
-                    this.x = x;
-                    this.y = y;
-                    this.w = w;
-                    this.h = h;
-                    this.word = word;
-                    this.colorScheme = colorScheme;
-                    this.hovered = false;
-                    this.hoverTime = 0;
-                }
-                
-                contains(px, py) {
-                    return (px >= this.x && px <= this.x + this.w && 
-                            py >= this.y && py <= this.y + this.h);
-                }
-                
-                isNear(px, py, radius) {
-                    let cx = this.x + this.w/2;
-                    let cy = this.y + this.h/2;
-                    let distance = p.dist(px, py, cx, cy);
-                    return distance < radius;
-                }
-            }
+            // Interactive variables
+            let clickEffect = false;
+            let clickX = 0;
+            let clickY = 0;
+            let clickTime = 0;
             
             p.preload = function() {
                 // Try to load CSV file
@@ -141,6 +118,15 @@
                     words = [...defaultWords];
                     csvLoaded = true;
                 }
+                
+                // Set a backup timeout
+                setTimeout(function() {
+                    if (!csvLoaded) {
+                        console.warn("CSV loading timeout - using default words");
+                        words = [...defaultWords];
+                        csvLoaded = true;
+                    }
+                }, 3000);
             };
             
             p.setup = function() {
@@ -155,15 +141,6 @@
                 // Adjust cell size based on screen dimensions
                 cellW = p.min(80, p.windowWidth / 10);
                 cellH = 18;
-                
-                // If CSV loading timed out, use defaults
-                setTimeout(function() {
-                    if (!csvLoaded) {
-                        console.warn("CSV loading timeout - using default words");
-                        words = [...defaultWords];
-                        csvLoaded = true;
-                    }
-                }, 5000); // 5 second timeout
             };
             
             p.draw = function() {
@@ -182,9 +159,6 @@
                     words = [...defaultWords];
                 }
                 
-                // Reset cells array each frame
-                interactiveWords = [];
-                
                 // We'll fill the canvas with text blocks in a wiggly grid
                 let wordIndex = 0;
                 
@@ -196,25 +170,66 @@
                         let finalX = x + offsetX;
                         let finalY = y + offsetY;
                         
+                        // Calculate distance from mouse for interactivity
+                        let d = p.dist(p.mouseX, p.mouseY, finalX + cellW/2, finalY + cellH/2);
+                        let isHovered = d < 80;
+                        
+                        // Calculate distance from click point for ripple effect
+                        let clickDistance = 0;
+                        if (clickEffect) {
+                            clickDistance = p.dist(clickX, clickY, finalX + cellW/2, finalY + cellH/2);
+                        }
+                        
                         // 2) Use another noise value to decide the cell's "blocky" color pattern
                         let n = p.noise(x * noiseScale + 555, y * noiseScale + 555, t);
-                        let colorScheme = 0;
                         
-                        if (n < 0.33) {
-                            p.fill(0);                  // black background
-                            p.rect(finalX, finalY, cellW, cellH);
-                            p.fill('#fff200');          // yellow text
-                            colorScheme = 1;
-                        } else if (n < 0.66) {
-                            p.fill('#fff200');          // yellow background
-                            p.rect(finalX, finalY, cellW, cellH);
-                            p.fill(0);                  // black text
-                            colorScheme = 2;
+                        // Apply interactive effects
+                        if (clickEffect && clickDistance < 200 && clickDistance > 100 && 
+                            p.noise(x * 0.1, y * 0.1, clickTime * 10) > 0.7) {
+                            // Ripple effect - invert colors
+                            if (n < 0.33) {
+                                p.fill(255, 242, 0);
+                                p.rect(finalX, finalY, cellW, cellH);
+                                p.fill(0);
+                            } else if (n < 0.66) {
+                                p.fill(0);
+                                p.rect(finalX, finalY, cellW, cellH);
+                                p.fill(255, 242, 0);
+                            } else {
+                                p.fill(0);
+                                p.rect(finalX, finalY, cellW, cellH);
+                                p.fill(255);
+                            }
+                        } else if (isHovered && p.random() > 0.5) {
+                            // Mouse hover effect - invert colors
+                            if (n < 0.33) {
+                                p.fill(255, 242, 0);
+                                p.rect(finalX, finalY, cellW, cellH);
+                                p.fill(0);
+                            } else if (n < 0.66) {
+                                p.fill(0);
+                                p.rect(finalX, finalY, cellW, cellH);
+                                p.fill(255, 242, 0);
+                            } else {
+                                p.fill(0);
+                                p.rect(finalX, finalY, cellW, cellH);
+                                p.fill(255);
+                            }
                         } else {
-                            p.fill(255);                // white background
-                            p.rect(finalX, finalY, cellW, cellH);
-                            p.fill(0);                  // black text
-                            colorScheme = 3;
+                            // Normal display
+                            if (n < 0.33) {
+                                p.fill(0);
+                                p.rect(finalX, finalY, cellW, cellH);
+                                p.fill(255, 242, 0);
+                            } else if (n < 0.66) {
+                                p.fill(255, 242, 0);
+                                p.rect(finalX, finalY, cellW, cellH);
+                                p.fill(0);
+                            } else {
+                                p.fill(255);
+                                p.rect(finalX, finalY, cellW, cellH);
+                                p.fill(0);
+                            }
                         }
                         
                         // Get the word to display
@@ -223,95 +238,27 @@
                         
                         // 3) Draw the text inside this cell
                         p.text(word, finalX + 2, finalY + 2);
-                        
-                        // 4) Create an interactive cell for this word
-                        interactiveWords.push(new Cell(finalX, finalY, cellW, cellH, word, colorScheme));
                     }
                 }
                 
-                // Check for hover effects
-                processHoverEffects();
-                
-                // Draw hover effects on top
-                drawHoverEffects();
+                // Update click ripple effect
+                if (clickEffect) {
+                    clickTime += p.deltaTime / 1000;
+                    if (clickTime > 1) {
+                        clickEffect = false;
+                    }
+                }
                 
                 // 5) Increment time at a slower rate for gentler animation
                 t += 0.003;
             };
             
-            function processHoverEffects() {
-                // Find cells near the mouse
-                for (let i = 0; i < interactiveWords.length; i++) {
-                    let cell = interactiveWords[i];
-                    
-                    // Check if mouse is near this cell
-                    if (cell.isNear(p.mouseX, p.mouseY, mouseInteractionRadius)) {
-                        // Random chance to highlight on hover to create organic effect
-                        if (p.random() < 0.05 && !cell.hovered) {
-                            cell.hovered = true;
-                            cell.hoverTime = 0;
-                            hoveredCells.push(cell);
-                        }
-                    }
-                }
-                
-                // Update and remove expired hover effects
-                for (let i = hoveredCells.length - 1; i >= 0; i--) {
-                    hoveredCells[i].hoverTime += p.deltaTime / 1000;
-                    if (hoveredCells[i].hoverTime > 1.5) {
-                        hoveredCells.splice(i, 1);
-                    }
-                }
-            }
-            
-            function drawHoverEffects() {
-                // Draw highlight effects for hovered cells
-                for (let i = 0; i < hoveredCells.length; i++) {
-                    let cell = hoveredCells[i];
-                    
-                    // Fade out based on hover time
-                    let alpha = p.map(cell.hoverTime, 0, 1.5, 255, 0);
-                    
-                    // Reverse the color scheme
-                    switch (cell.colorScheme) {
-                        case 1: // Was black bg, yellow text
-                            p.fill('#fff200');
-                            p.rect(cell.x, cell.y, cell.w, cell.h);
-                            p.fill(0, alpha);
-                            break;
-                        case 2: // Was yellow bg, black text
-                            p.fill(0);
-                            p.rect(cell.x, cell.y, cell.w, cell.h);
-                            p.fill('#fff200', alpha);
-                            break;
-                        case 3: // Was white bg, black text
-                            p.fill(0);
-                            p.rect(cell.x, cell.y, cell.w, cell.h);
-                            p.fill(255, alpha);
-                            break;
-                    }
-                    
-                    // Draw the word again with new colors
-                    p.text(cell.word, cell.x + 2, cell.y + 2);
-                }
-            }
-            
-            // Ripple effect when clicking
+            // Handle mouse click
             p.mousePressed = function() {
-                // Create layered ripple effect
-                for (let radius = 50; radius <= 150; radius += 25) {
-                    setTimeout(function() {
-                        for (let i = 0; i < interactiveWords.length; i++) {
-                            if (interactiveWords[i].isNear(p.mouseX, p.mouseY, radius) && p.random() < 0.2) {
-                                let cell = interactiveWords[i];
-                                cell.hovered = true;
-                                cell.hoverTime = 0;
-                                hoveredCells.push(cell);
-                            }
-                        }
-                    }, (radius - 50) * 10);
-                }
-                
+                clickEffect = true;
+                clickX = p.mouseX;
+                clickY = p.mouseY;
+                clickTime = 0;
                 return false; // Prevent default
             };
             
