@@ -35,13 +35,6 @@
             font-weight: bold;
             text-align: center;
         }
-        
-        .word {
-            display: inline-block;
-            margin-right: 5px;
-            cursor: pointer;
-            transition: color 0.2s, font-weight 0.2s;
-        }
     </style>
 </head>
 <body>
@@ -51,67 +44,57 @@
     <script>
         // Default words to use if CSV loading fails
         const defaultWords = [
-            "Fashion", "Style", "Design", "Trend", "Collection", "Luxury", "Vogue", "Apparel", 
-            "Couture", "Runway", "Ensemble", "Editorial", "Silhouette", "Bespoke", "Elegance", 
-            "Fabric", "Textile", "Pattern", "Garment", "Accessory", "Tailor", "Aesthetic", 
-            "Iconic", "Chic", "Sophisticated", "Contemporary", "Minimal", "Maximalist", 
-            "Vintage", "Retro", "Sustainable", "Artisanal", "Avant-garde", "Eclectic", 
-            "Timeless", "Season", "Palette", "Denim", "Leather", "Cotton", "Silk", "Wool"
+            "Prada", "Gucci", "YSL", "Dior", "Phoebe Philo", "Roland Mouret", 
+            "Paul Smith", "Dunhill", "Vivienne Westwood", "Jigsaw", "Toast", 
+            "H&M", "Hugo Boss", "ZARA", "Tommy Hilfiger", "Timberland", 
+            "Lululemon", "Adidas", "Nike", "Gymshark", "Reiss", "Kestin", 
+            "Oliver Spencer", "Dries van Noten", "Martin Margiela", "Donna Karan",
+            "Ralph Lauren", "Calvin Klein", "Armani", "Lacoste", "All Saints", 
+            "COS", "ASOS"
         ];
         
         // Main p5.js sketch
         new p5(function(p) {
+            // Array to store words loaded from CSV
             let words = [];
-            let textElements = [];
-            let wordObjects = [];
             let csvLoaded = false;
-            let loadingFailed = false;
             
-            // Text object constructor for interactive text
-            class TextObject {
-                constructor(text, x, y, weight) {
-                    this.text = text;
+            // Size of each text "cell"
+            let cellW = 80;
+            let cellH = 18;
+            
+            // Noise settings
+            let noiseScale = 0.03;
+            let t = 0; // time variable to animate the noise
+            
+            // Interactive elements
+            let mouseInteractionRadius = 100;
+            let interactiveWords = [];
+            let hoveredCells = [];
+            
+            // Cell tracking for interactivity
+            class Cell {
+                constructor(x, y, w, h, word, colorScheme) {
                     this.x = x;
                     this.y = y;
-                    this.weight = weight;
-                    this.color = p.color(0, 0, 0); // Black
-                    this.targetColor = p.color(0, 0, 0);
-                    this.colorTransition = 0;
-                    this.active = false;
+                    this.w = w;
+                    this.h = h;
+                    this.word = word;
+                    this.colorScheme = colorScheme;
+                    this.hovered = false;
+                    this.hoverTime = 0;
                 }
                 
-                display() {
-                    if (this.colorTransition < 1) {
-                        this.color = p.lerpColor(this.color, this.targetColor, 0.1);
-                        this.colorTransition += 0.1;
-                    }
-                    
-                    p.fill(this.color);
-                    p.textStyle(this.weight);
-                    p.text(this.text, this.x, this.y);
+                contains(px, py) {
+                    return (px >= this.x && px <= this.x + this.w && 
+                            py >= this.y && py <= this.y + this.h);
                 }
                 
-                setHover(isHovered) {
-                    if (isHovered) {
-                        this.targetColor = p.color(255, 255, 255); // White
-                    } else {
-                        this.targetColor = p.color(0, 0, 0); // Black
-                    }
-                    this.colorTransition = 0;
-                }
-                
-                isNear(x, y, radius) {
-                    const distance = p.dist(this.x, this.y, x, y);
+                isNear(px, py, radius) {
+                    let cx = this.x + this.w/2;
+                    let cy = this.y + this.h/2;
+                    let distance = p.dist(px, py, cx, cy);
                     return distance < radius;
-                }
-                
-                updateWeight(distance, maxDistance) {
-                    if (distance < maxDistance) {
-                        const intensity = 1 - distance / maxDistance;
-                        this.weight = p.NORMAL + Math.floor(intensity * 2); // Range from NORMAL to BOLD
-                    } else {
-                        this.weight = p.NORMAL;
-                    }
                 }
             }
             
@@ -140,7 +123,7 @@
                             // If no words were extracted, use defaults
                             if (words.length === 0) {
                                 console.warn("CSV file was loaded but no words were found. Using defaults.");
-                                words = defaultWords;
+                                words = [...defaultWords];
                             }
                             
                             csvLoaded = true;
@@ -149,15 +132,13 @@
                         // Error callback
                         function(error) {
                             console.error("Error loading CSV:", error);
-                            words = defaultWords;
-                            loadingFailed = true;
+                            words = [...defaultWords];
                             csvLoaded = true;
                         }
                     );
                 } catch (e) {
                     console.error("Exception during CSV loading:", e);
-                    words = defaultWords;
-                    loadingFailed = true;
+                    words = [...defaultWords];
                     csvLoaded = true;
                 }
             };
@@ -167,32 +148,26 @@
                 let canvas = p.createCanvas(p.windowWidth, p.windowHeight);
                 canvas.parent('p5-canvas');
                 
-                p.textFont('Arial');
-                p.textSize(16);
+                p.textSize(12);
                 p.textAlign(p.LEFT, p.TOP);
+                p.noStroke();
                 
-                // If CSV loading failed or succeeded, initialize
-                if (csvLoaded) {
-                    initializeWords();
-                } else {
-                    // Set a timeout in case CSV loading is taking too long
-                    setTimeout(function() {
-                        if (!csvLoaded) {
-                            console.warn("CSV loading timeout - using default words");
-                            words = defaultWords;
-                            loadingFailed = true;
-                            csvLoaded = true;
-                            initializeWords();
-                        }
-                    }, 5000); // 5 second timeout
-                }
+                // Adjust cell size based on screen dimensions
+                cellW = p.min(80, p.windowWidth / 10);
+                cellH = 18;
+                
+                // If CSV loading timed out, use defaults
+                setTimeout(function() {
+                    if (!csvLoaded) {
+                        console.warn("CSV loading timeout - using default words");
+                        words = [...defaultWords];
+                        csvLoaded = true;
+                    }
+                }, 5000); // 5 second timeout
             };
             
             p.draw = function() {
-                // Set background to yellow (#fff200)
-                p.background(255, 242, 0);
-                
-                // If CSV is still loading, display loading message
+                // If CSV is still loading, wait
                 if (!csvLoaded) {
                     return;
                 }
@@ -202,99 +177,149 @@
                     document.getElementById('loading-message').style.display = 'none';
                 }
                 
-                // Display all word objects
-                for (let i = 0; i < wordObjects.length; i++) {
-                    wordObjects[i].display();
-                    
-                    // Update word weight based on mouse proximity
-                    const distance = p.dist(wordObjects[i].x, wordObjects[i].y, p.mouseX, p.mouseY);
-                    wordObjects[i].updateWeight(distance, 100);
+                // Ensure we have words to use
+                if (!words || words.length === 0) {
+                    words = [...defaultWords];
                 }
+                
+                // Reset cells array each frame
+                interactiveWords = [];
+                
+                // We'll fill the canvas with text blocks in a wiggly grid
+                let wordIndex = 0;
+                
+                for (let y = 0; y < p.height; y += cellH) {
+                    for (let x = 0; x < p.width; x += cellW) {
+                        // 1) Calculate wiggly offsets to move each cell from its grid position
+                        let offsetX = p.map(p.noise(x * noiseScale, y * noiseScale, t), 0, 1, -cellW/2, cellW/2);
+                        let offsetY = p.map(p.noise(x * noiseScale + 999, y * noiseScale + 999, t), 0, 1, -cellH/2, cellH/2);
+                        let finalX = x + offsetX;
+                        let finalY = y + offsetY;
+                        
+                        // 2) Use another noise value to decide the cell's "blocky" color pattern
+                        let n = p.noise(x * noiseScale + 555, y * noiseScale + 555, t);
+                        let colorScheme = 0;
+                        
+                        if (n < 0.33) {
+                            p.fill(0);                  // black background
+                            p.rect(finalX, finalY, cellW, cellH);
+                            p.fill('#fff200');          // yellow text
+                            colorScheme = 1;
+                        } else if (n < 0.66) {
+                            p.fill('#fff200');          // yellow background
+                            p.rect(finalX, finalY, cellW, cellH);
+                            p.fill(0);                  // black text
+                            colorScheme = 2;
+                        } else {
+                            p.fill(255);                // white background
+                            p.rect(finalX, finalY, cellW, cellH);
+                            p.fill(0);                  // black text
+                            colorScheme = 3;
+                        }
+                        
+                        // Get the word to display
+                        let word = words[wordIndex % words.length];
+                        wordIndex++;
+                        
+                        // 3) Draw the text inside this cell
+                        p.text(word, finalX + 2, finalY + 2);
+                        
+                        // 4) Create an interactive cell for this word
+                        interactiveWords.push(new Cell(finalX, finalY, cellW, cellH, word, colorScheme));
+                    }
+                }
+                
+                // Check for hover effects
+                processHoverEffects();
+                
+                // Draw hover effects on top
+                drawHoverEffects();
+                
+                // 5) Increment time at a slower rate for gentler animation
+                t += 0.003;
             };
             
-            // Initialize text layout with words
-            function initializeWords() {
-                // Fallback if needed
-                if (!words || words.length === 0) {
-                    words = defaultWords;
+            function processHoverEffects() {
+                // Find cells near the mouse
+                for (let i = 0; i < interactiveWords.length; i++) {
+                    let cell = interactiveWords[i];
+                    
+                    // Check if mouse is near this cell
+                    if (cell.isNear(p.mouseX, p.mouseY, mouseInteractionRadius)) {
+                        // Random chance to highlight on hover to create organic effect
+                        if (p.random() < 0.05 && !cell.hovered) {
+                            cell.hovered = true;
+                            cell.hoverTime = 0;
+                            hoveredCells.push(cell);
+                        }
+                    }
                 }
                 
-                // Clear any existing word objects
-                wordObjects = [];
-                
-                // Calculate roughly how many words to use based on screen size
-                const density = 0.001; // words per pixel
-                const targetCount = Math.ceil(p.width * p.height * density);
-                
-                // Create word objects with random positions
-                let x = 10;
-                let y = 20;
-                const lineHeight = 24;
-                const margin = 5;
-                
-                // Randomize the word weights
-                const weights = [p.NORMAL, p.BOLD];
-                
-                for (let i = 0; i < targetCount; i++) {
-                    // Get a random word
-                    const word = words[Math.floor(p.random(words.length))];
-                    const weight = weights[Math.floor(p.random(weights.length))];
+                // Update and remove expired hover effects
+                for (let i = hoveredCells.length - 1; i >= 0; i--) {
+                    hoveredCells[i].hoverTime += p.deltaTime / 1000;
+                    if (hoveredCells[i].hoverTime > 1.5) {
+                        hoveredCells.splice(i, 1);
+                    }
+                }
+            }
+            
+            function drawHoverEffects() {
+                // Draw highlight effects for hovered cells
+                for (let i = 0; i < hoveredCells.length; i++) {
+                    let cell = hoveredCells[i];
                     
-                    // Calculate width of this word
-                    p.textStyle(weight);
-                    const wordWidth = p.textWidth(word) + margin;
+                    // Fade out based on hover time
+                    let alpha = p.map(cell.hoverTime, 0, 1.5, 255, 0);
                     
-                    // If we're going to exceed the canvas width, move to next line
-                    if (x + wordWidth > p.width - 10) {
-                        x = 10;
-                        y += lineHeight;
+                    // Reverse the color scheme
+                    switch (cell.colorScheme) {
+                        case 1: // Was black bg, yellow text
+                            p.fill('#fff200');
+                            p.rect(cell.x, cell.y, cell.w, cell.h);
+                            p.fill(0, alpha);
+                            break;
+                        case 2: // Was yellow bg, black text
+                            p.fill(0);
+                            p.rect(cell.x, cell.y, cell.w, cell.h);
+                            p.fill('#fff200', alpha);
+                            break;
+                        case 3: // Was white bg, black text
+                            p.fill(0);
+                            p.rect(cell.x, cell.y, cell.w, cell.h);
+                            p.fill(255, alpha);
+                            break;
                     }
                     
-                    // If we're going to exceed the canvas height, start over from top
-                    if (y > p.height - lineHeight) {
-                        break; // We've filled the screen
-                    }
-                    
-                    // Create the word object
-                    let textObj = new TextObject(word, x, y, weight);
-                    wordObjects.push(textObj);
-                    
-                    // Move position for next word
-                    x += wordWidth;
+                    // Draw the word again with new colors
+                    p.text(cell.word, cell.x + 2, cell.y + 2);
                 }
             }
             
             // Ripple effect when clicking
             p.mousePressed = function() {
-                // Create multiple ripples
-                for (let i = 0; i < 5; i++) {
+                // Create layered ripple effect
+                for (let radius = 50; radius <= 150; radius += 25) {
                     setTimeout(function() {
-                        const radius = 50 + i * 20;
-                        const affectedWords = wordObjects.filter(word => 
-                            word.isNear(p.mouseX, p.mouseY, radius) && p.random() < 0.3);
-                            
-                        affectedWords.forEach(word => {
-                            word.setHover(true);
-                            setTimeout(() => word.setHover(false), 200 + p.random() * 800);
-                        });
-                    }, i * 100);
+                        for (let i = 0; i < interactiveWords.length; i++) {
+                            if (interactiveWords[i].isNear(p.mouseX, p.mouseY, radius) && p.random() < 0.2) {
+                                let cell = interactiveWords[i];
+                                cell.hovered = true;
+                                cell.hoverTime = 0;
+                                hoveredCells.push(cell);
+                            }
+                        }
+                    }, (radius - 50) * 10);
                 }
-            };
-            
-            // Hover effect
-            p.mouseMoved = function() {
-                for (let i = 0; i < wordObjects.length; i++) {
-                    if (wordObjects[i].isNear(p.mouseX, p.mouseY, 30) && p.random() < 0.3) {
-                        wordObjects[i].setHover(true);
-                        setTimeout(() => wordObjects[i].setHover(false), 500 + p.random() * 1000);
-                    }
-                }
+                
+                return false; // Prevent default
             };
             
             // Resize canvas when window is resized
             p.windowResized = function() {
                 p.resizeCanvas(p.windowWidth, p.windowHeight);
-                initializeWords();
+                // Adjust cell width based on screen size
+                cellW = p.min(80, p.windowWidth / 10);
             };
             
         }, 'p5-canvas');
