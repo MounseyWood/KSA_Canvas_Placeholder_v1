@@ -67,6 +67,24 @@
     </div>
 
     <script>
+        // Default words to use if CSV is empty or not available
+        const defaultWords = [
+            "Fashion", "Style", "Design", "Trend", "Collection", "Luxury", "Vogue", "Apparel", 
+            "Couture", "Runway", "Ensemble", "Editorial", "Silhouette", "Bespoke", "Elegance", 
+            "Fabric", "Textile", "Pattern", "Garment", "Accessory", "Tailor", "Aesthetic", 
+            "Iconic", "Chic", "Sophisticated", "Contemporary", "Minimal", "Maximalist", 
+            "Vintage", "Retro", "Sustainable", "Artisanal", "Avant-garde", "Eclectic", 
+            "Timeless", "Season", "Palette", "Denim", "Leather", "Cotton", "Silk", "Wool", 
+            "Cashmere", "Linen", "Satin", "Velvet", "Knit", "Embroidery", "Print",
+            "Texture", "Drape", "Stitch", "Seam", "Hem", "Pleats", "Ruffle", "Collar",
+            "Sleeve", "Cuff", "Button", "Zipper", "Tailored", "Oversized", "Fitted", 
+            "Structured", "Fluid", "Monochrome", "Colorful", "Bold", "Subtle", "Classic",
+            "Trendy", "Edgy", "Refined", "Organic", "Geometric", "Abstract", "Florals",
+            "Stripes", "Check", "Plaid", "Houndstooth", "Herringbone", "Modern", "Traditional",
+            "Innovative", "Craftsmanship", "Technique", "Detail", "Proportion", "Balance", 
+            "Layering", "Styling", "Coordination", "Visual", "Aesthetic", "Creative"
+        ];
+        
         // Array to store words from CSV
         let words = [];
         let wordsLoaded = false;
@@ -88,7 +106,6 @@
                     });
                     
                     // Extract words from the parsed data
-                    // This tries multiple approaches to find the words in the CSV
                     if (results.data && results.data.length > 0) {
                         // Try to find a column named 'word' or the first column
                         words = results.data.map(row => {
@@ -101,10 +118,10 @@
                         }).filter(word => word && word.trim() !== '');
                     }
                     
-                    // If no words were found, use some defaults
+                    // If no words were found, use our defaults
                     if (words.length === 0) {
-                        words = ["Placeholder", "Example", "Default", "Backup", "Word"];
-                        console.warn("No words found in CSV. Using default words.");
+                        console.warn("CSV file is empty. Using default words.");
+                        words = defaultWords;
                     } else {
                         console.log(`Successfully loaded ${words.length} words from CSV`);
                     }
@@ -119,7 +136,7 @@
                     console.error("Error loading CSV:", error);
                     
                     // Use default words if CSV loading fails
-                    words = ["Placeholder", "Example", "Default", "Backup", "Word"];
+                    words = defaultWords;
                     wordsLoaded = true;
                     
                     // Create the text pattern even if there was an error
@@ -139,13 +156,24 @@
             return weights[Math.floor(Math.random() * weights.length)];
         }
 
+        // Function to calculate word density based on screen size
+        function calculateWordDensity() {
+            // This approximates how many words should be generated to fill the screen
+            // We adjust density based on screen size to ensure proper coverage
+            const screenArea = window.innerWidth * window.innerHeight;
+            
+            // Average word takes up roughly 2000 square pixels (variable with font size)
+            // We add 20% more words to ensure proper coverage with variations
+            return Math.ceil((screenArea / 1000) * 1.2);
+        }
+
         // Function to create text pattern
         function createTextPattern() {
             const textLayer = document.getElementById('textLayer');
             let content = '';
             
-            // Generate enough words to fill the screen - based on screen size
-            const wordCount = Math.ceil((window.innerWidth * window.innerHeight) / 2000);
+            // Generate enough words to fill the screen based on calculated density
+            const wordCount = calculateWordDensity();
             
             for (let i = 0; i < wordCount; i++) {
                 content += `<span class="word" style="font-weight: ${getRandomWeight()}">${getRandomWord()}</span>`;
@@ -225,8 +253,12 @@
             // Load words from CSV first, then create the pattern
             loadWordsFromCSV();
             
-            // Add window resize handler
-            window.addEventListener('resize', handleResize);
+            // Add window resize handler with debounce for better performance
+            let resizeTimer;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(handleResize, 250);
+            });
         };
     </script>
 </body>
