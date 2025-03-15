@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Interactive Text Camouflage</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/papaparse/5.3.0/papaparse.min.js" integrity="sha512-ymgUftodXDCZ5tIW7Vn7Ixq4xDdfbFa9ztBNHsGAreJxoNZ8KiYgniG6sc0IkcmXkn6n/9+pQ8uiw2fv3DW4D+g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <!-- Import p5.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
     <style>
         html, body {
             margin: 0;
@@ -16,367 +17,287 @@
             font-family: Arial, sans-serif;
         }
         
-        .container {
-            position: relative;
-            width: 100%;
-            height: 100vh;
-            background-color: #fff200;
-            overflow: hidden;
-        }
-        
-        .text-layer {
+        #p5-canvas {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            padding: 10px;
-            box-sizing: border-box;
-            line-height: 1.2;
         }
         
-        .word {
-            display: inline-block;
-            margin-right: 5px;
-            color: #000000;
-            cursor: pointer;
-            transition: color 0.2s, font-weight 0.2s;
-        }
-        
-        .word:hover {
-            color: #ffffff;
-            font-weight: bold;
-        }
-
         .loading {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            color: #000000;
+            color: #fff200;
             font-size: 24px;
             font-weight: bold;
+            text-align: center;
+        }
+        
+        .word {
+            display: inline-block;
+            margin-right: 5px;
+            cursor: pointer;
+            transition: color 0.2s, font-weight 0.2s;
         }
     </style>
 </head>
 <body>
-    <div class="container" id="container">
-        <div class="text-layer" id="textLayer">
-            <div class="loading">Loading words...<br><span id="loadingStatus" style="font-size: 14px; font-weight: normal;"></span></div>
-        </div>
-    </div>
-
+    <div id="p5-canvas"></div>
+    <div class="loading" id="loading-message">Loading words from CSV...</div>
+    
     <script>
-        // Default words to use if CSV is empty or not available
+        // Default words to use if CSV loading fails
         const defaultWords = [
             "Fashion", "Style", "Design", "Trend", "Collection", "Luxury", "Vogue", "Apparel", 
             "Couture", "Runway", "Ensemble", "Editorial", "Silhouette", "Bespoke", "Elegance", 
             "Fabric", "Textile", "Pattern", "Garment", "Accessory", "Tailor", "Aesthetic", 
             "Iconic", "Chic", "Sophisticated", "Contemporary", "Minimal", "Maximalist", 
             "Vintage", "Retro", "Sustainable", "Artisanal", "Avant-garde", "Eclectic", 
-            "Timeless", "Season", "Palette", "Denim", "Leather", "Cotton", "Silk", "Wool", 
-            "Cashmere", "Linen", "Satin", "Velvet", "Knit", "Embroidery", "Print",
-            "Texture", "Drape", "Stitch", "Seam", "Hem", "Pleats", "Ruffle", "Collar",
-            "Sleeve", "Cuff", "Button", "Zipper", "Tailored", "Oversized", "Fitted", 
-            "Structured", "Fluid", "Monochrome", "Colorful", "Bold", "Subtle", "Classic",
-            "Trendy", "Edgy", "Refined", "Organic", "Geometric", "Abstract", "Florals",
-            "Stripes", "Check", "Plaid", "Houndstooth", "Herringbone", "Modern", "Traditional",
-            "Innovative", "Craftsmanship", "Technique", "Detail", "Proportion", "Balance", 
-            "Layering", "Styling", "Coordination", "Visual", "Aesthetic", "Creative"
+            "Timeless", "Season", "Palette", "Denim", "Leather", "Cotton", "Silk", "Wool"
         ];
         
-        // Array to store words from CSV
-        let words = [];
-        let wordsLoaded = false;
-
-        // Function to load words from CSV file
-        function loadWordsFromCSV() {
-            // Try different possible paths to the CSV file
-            const possiblePaths = [
-                'words.csv',           // Same directory
-                './words.csv',         // Explicit current directory
-                '/words.csv',          // Root directory
-                '../words.csv',        // Parent directory
-                'assets/words.csv',    // Common subdirectory
-                window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/')) + '/words.csv' // Dynamic path based on current page
-            ];
-
-            // Add the absolute URL based on current page location
-            const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
-            possiblePaths.push(baseUrl + 'words.csv');
-
-            console.log("Attempting to load CSV from these locations:", possiblePaths);
+        // Main p5.js sketch
+        new p5(function(p) {
+            let words = [];
+            let textElements = [];
+            let wordObjects = [];
+            let csvLoaded = false;
+            let loadingFailed = false;
             
-            // Function to try loading from the next path
-            function tryNextPath(index) {
-                if (index >= possiblePaths.length) {
-                    console.error("Failed to load CSV from all possible paths");
-                    // Use default words if CSV loading fails from all locations
+            // Text object constructor for interactive text
+            class TextObject {
+                constructor(text, x, y, weight) {
+                    this.text = text;
+                    this.x = x;
+                    this.y = y;
+                    this.weight = weight;
+                    this.color = p.color(0, 0, 0); // Black
+                    this.targetColor = p.color(0, 0, 0);
+                    this.colorTransition = 0;
+                    this.active = false;
+                }
+                
+                display() {
+                    if (this.colorTransition < 1) {
+                        this.color = p.lerpColor(this.color, this.targetColor, 0.1);
+                        this.colorTransition += 0.1;
+                    }
+                    
+                    p.fill(this.color);
+                    p.textStyle(this.weight);
+                    p.text(this.text, this.x, this.y);
+                }
+                
+                setHover(isHovered) {
+                    if (isHovered) {
+                        this.targetColor = p.color(255, 255, 255); // White
+                    } else {
+                        this.targetColor = p.color(0, 0, 0); // Black
+                    }
+                    this.colorTransition = 0;
+                }
+                
+                isNear(x, y, radius) {
+                    const distance = p.dist(this.x, this.y, x, y);
+                    return distance < radius;
+                }
+                
+                updateWeight(distance, maxDistance) {
+                    if (distance < maxDistance) {
+                        const intensity = 1 - distance / maxDistance;
+                        this.weight = p.NORMAL + Math.floor(intensity * 2); // Range from NORMAL to BOLD
+                    } else {
+                        this.weight = p.NORMAL;
+                    }
+                }
+            }
+            
+            p.preload = function() {
+                // Try to load CSV file
+                try {
+                    p.loadTable('words.csv', 'csv', 'header', 
+                        // Success callback
+                        function(table) {
+                            document.getElementById('loading-message').textContent = "Processing words...";
+                            
+                            // Extract words from the table
+                            if (table.getRowCount() > 0) {
+                                for (let r = 0; r < table.getRowCount(); r++) {
+                                    // Try different column names or get first column
+                                    let word = table.getString(r, 'word') || 
+                                              table.getString(r, 'Word') || 
+                                              table.getString(r, table.columns[0]);
+                                              
+                                    if (word && word.trim() !== '') {
+                                        words.push(word.trim());
+                                    }
+                                }
+                            }
+                            
+                            // If no words were extracted, use defaults
+                            if (words.length === 0) {
+                                console.warn("CSV file was loaded but no words were found. Using defaults.");
+                                words = defaultWords;
+                            }
+                            
+                            csvLoaded = true;
+                            console.log(`Successfully loaded ${words.length} words from CSV`);
+                        },
+                        // Error callback
+                        function(error) {
+                            console.error("Error loading CSV:", error);
+                            words = defaultWords;
+                            loadingFailed = true;
+                            csvLoaded = true;
+                        }
+                    );
+                } catch (e) {
+                    console.error("Exception during CSV loading:", e);
                     words = defaultWords;
-                    wordsLoaded = true;
-                    createTextPattern();
-                    addInteractivity();
+                    loadingFailed = true;
+                    csvLoaded = true;
+                }
+            };
+            
+            p.setup = function() {
+                // Create canvas that fills the window
+                let canvas = p.createCanvas(p.windowWidth, p.windowHeight);
+                canvas.parent('p5-canvas');
+                
+                p.textFont('Arial');
+                p.textSize(16);
+                p.textAlign(p.LEFT, p.TOP);
+                
+                // If CSV loading failed or succeeded, initialize
+                if (csvLoaded) {
+                    initializeWords();
+                } else {
+                    // Set a timeout in case CSV loading is taking too long
+                    setTimeout(function() {
+                        if (!csvLoaded) {
+                            console.warn("CSV loading timeout - using default words");
+                            words = defaultWords;
+                            loadingFailed = true;
+                            csvLoaded = true;
+                            initializeWords();
+                        }
+                    }, 5000); // 5 second timeout
+                }
+            };
+            
+            p.draw = function() {
+                // Set background to yellow (#fff200)
+                p.background(255, 242, 0);
+                
+                // If CSV is still loading, display loading message
+                if (!csvLoaded) {
                     return;
                 }
-
-                const path = possiblePaths[index];
-                console.log(`Attempting to load from: ${path}`);
                 
-                updateLoadingStatus(`Trying path: ${path}`);
-                fetch(path)
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error(`CSV file not found at ${path}`);
-                        }
-                        updateLoadingStatus(`Found file at: ${path}`);
-                        return response.text();
-                    })
-                    .then(csvData => {
-                        console.log(`Successfully fetched CSV from ${path}`);
-                        
-                        // Parse CSV data using PapaParse
-                        let results;
-                        try {
-                            if (typeof Papa === 'undefined') {
-                                throw new Error("Papa Parse is not available");
-                            }
-                            results = Papa.parse(csvData, {
-                                header: true,
-                                skipEmptyLines: true
-                            });
-                        } catch (parseError) {
-                            console.error("Error parsing CSV:", parseError);
-                            // If we can't parse, just use the raw text and split by lines
-                            const lines = csvData.split(/\r?\n/).filter(line => line.trim() !== '');
-                            if (lines.length > 1) {
-                                // Assume first line is header, use rest as words
-                                words = lines.slice(1).map(line => line.trim());
-                                console.log(`Manually parsed ${words.length} words from CSV`);
-                                wordsLoaded = true;
-                                createTextPattern();
-                                addInteractivity();
-                                return;
-                            } else {
-                                throw new Error("CSV file format unrecognized");
-                            }
-                        }
-                        
-                        // Check if we have any data
-                        if (results.data && results.data.length > 0) {
-                            // Try to find a column named 'word' or the first column
-                            words = results.data.map(row => {
-                                // If there's a column named 'word', use that
-                                if (row.word) return row.word;
-                                // If there's a column named 'Word', use that
-                                if (row.Word) return row.Word;
-                                // Check for empty CSV with just headers but no data
-                                if (Object.values(row)[0] === "") return null;
-                                // Otherwise use the first value
-                                return Object.values(row)[0];
-                            }).filter(word => word && word.trim() !== '');
-                        }
-                        
-                        // If no words were found, use our defaults
-                        if (words.length === 0) {
-                            console.warn("CSV file is empty. Using default words.");
-                            words = defaultWords;
-                        } else {
-                            console.log(`Successfully loaded ${words.length} words from CSV`);
-                        }
-                        
-                        wordsLoaded = true;
-                        
-                        // Now create the text pattern
-                        createTextPattern();
-                        addInteractivity();
-                    })
-                    .catch(error => {
-                        console.error(`Error loading CSV from ${path}:`, error);
-                        // Try the next path
-                        tryNextPath(index + 1);
-                    });
-            }
+                // Remove loading message once words are ready
+                if (document.getElementById('loading-message')) {
+                    document.getElementById('loading-message').style.display = 'none';
+                }
+                
+                // Display all word objects
+                for (let i = 0; i < wordObjects.length; i++) {
+                    wordObjects[i].display();
+                    
+                    // Update word weight based on mouse proximity
+                    const distance = p.dist(wordObjects[i].x, wordObjects[i].y, p.mouseX, p.mouseY);
+                    wordObjects[i].updateWeight(distance, 100);
+                }
+            };
             
-            // Add status updates
-            function updateLoadingStatus(message) {
-                const statusElement = document.getElementById('loadingStatus');
-                if (statusElement) {
-                    statusElement.textContent = message;
+            // Initialize text layout with words
+            function initializeWords() {
+                // Fallback if needed
+                if (!words || words.length === 0) {
+                    words = defaultWords;
+                }
+                
+                // Clear any existing word objects
+                wordObjects = [];
+                
+                // Calculate roughly how many words to use based on screen size
+                const density = 0.001; // words per pixel
+                const targetCount = Math.ceil(p.width * p.height * density);
+                
+                // Create word objects with random positions
+                let x = 10;
+                let y = 20;
+                const lineHeight = 24;
+                const margin = 5;
+                
+                // Randomize the word weights
+                const weights = [p.NORMAL, p.BOLD];
+                
+                for (let i = 0; i < targetCount; i++) {
+                    // Get a random word
+                    const word = words[Math.floor(p.random(words.length))];
+                    const weight = weights[Math.floor(p.random(weights.length))];
+                    
+                    // Calculate width of this word
+                    p.textStyle(weight);
+                    const wordWidth = p.textWidth(word) + margin;
+                    
+                    // If we're going to exceed the canvas width, move to next line
+                    if (x + wordWidth > p.width - 10) {
+                        x = 10;
+                        y += lineHeight;
+                    }
+                    
+                    // If we're going to exceed the canvas height, start over from top
+                    if (y > p.height - lineHeight) {
+                        break; // We've filled the screen
+                    }
+                    
+                    // Create the word object
+                    let textObj = new TextObject(word, x, y, weight);
+                    wordObjects.push(textObj);
+                    
+                    // Move position for next word
+                    x += wordWidth;
                 }
             }
             
-            // Start trying paths
-            updateLoadingStatus("Searching for words.csv file...");
-            tryNextPath(0);
-        }
-
-        // Function to generate random words
-        function getRandomWord() {
-            return words[Math.floor(Math.random() * words.length)];
-        }
-
-        // Function to get random font weight
-        function getRandomWeight() {
-            const weights = [300, 400, 500, 600, 700];
-            return weights[Math.floor(Math.random() * weights.length)];
-        }
-
-        // Function to calculate word density based on screen size
-        function calculateWordDensity() {
-            // This approximates how many words should be generated to fill the screen
-            // We adjust density based on screen size to ensure proper coverage
-            const screenArea = window.innerWidth * window.innerHeight;
-            
-            // Average word takes up roughly 2000 square pixels (variable with font size)
-            // We add 20% more words to ensure proper coverage with variations
-            return Math.ceil((screenArea / 1000) * 1.2);
-        }
-
-        // Function to create text pattern
-        function createTextPattern() {
-            const textLayer = document.getElementById('textLayer');
-            let content = '';
-            
-            // Generate enough words to fill the screen based on calculated density
-            const wordCount = calculateWordDensity();
-            
-            // If we somehow have no words (should never happen due to defaults), use placeholders
-            if (!words || words.length === 0) {
-                console.error("No words available for pattern creation");
-                words = ["Word", "Text", "Content"];
-            }
-            
-            // Create the text pattern
-            for (let i = 0; i < wordCount; i++) {
-                content += `<span class="word" style="font-weight: ${getRandomWeight()}">${getRandomWord()}</span>`;
-            }
-            
-            textLayer.innerHTML = content;
-        }
-
-        // Add interactivity
-        function addInteractivity() {
-            const words = document.querySelectorAll('.word');
-            
-            words.forEach(word => {
-                word.addEventListener('mouseover', () => {
-                    // Random chance of triggering nearby words for a "ripple" effect
-                    if (Math.random() < 0.3) {
-                        const nearbyWords = Array.from(words).filter(() => Math.random() < 0.05);
-                        nearbyWords.forEach(nearby => {
-                            nearby.style.color = '#ffffff';
-                            setTimeout(() => {
-                                nearby.style.color = '#000000';
-                            }, 500 + Math.random() * 1000);
+            // Ripple effect when clicking
+            p.mousePressed = function() {
+                // Create multiple ripples
+                for (let i = 0; i < 5; i++) {
+                    setTimeout(function() {
+                        const radius = 50 + i * 20;
+                        const affectedWords = wordObjects.filter(word => 
+                            word.isNear(p.mouseX, p.mouseY, radius) && p.random() < 0.3);
+                            
+                        affectedWords.forEach(word => {
+                            word.setHover(true);
+                            setTimeout(() => word.setHover(false), 200 + p.random() * 800);
                         });
+                    }, i * 100);
+                }
+            };
+            
+            // Hover effect
+            p.mouseMoved = function() {
+                for (let i = 0; i < wordObjects.length; i++) {
+                    if (wordObjects[i].isNear(p.mouseX, p.mouseY, 30) && p.random() < 0.3) {
+                        wordObjects[i].setHover(true);
+                        setTimeout(() => wordObjects[i].setHover(false), 500 + p.random() * 1000);
                     }
-                });
-                
-                word.addEventListener('click', () => {
-                    // Create a ripple effect on click
-                    const rippleEffect = () => {
-                        const nearbyWords = Array.from(words).filter(() => Math.random() < 0.1);
-                        nearbyWords.forEach(nearby => {
-                            nearby.style.color = '#ffffff';
-                            setTimeout(() => {
-                                nearby.style.color = '#000000';
-                            }, 200 + Math.random() * 800);
-                        });
-                    };
-                    
-                    // Create multiple ripples
-                    for (let i = 0; i < 5; i++) {
-                        setTimeout(rippleEffect, i * 100);
-                    }
-                });
-            });
+                }
+            };
             
-            // Add mouse movement effect
-            document.addEventListener('mousemove', (e) => {
-                const x = e.clientX;
-                const y = e.clientY;
-                
-                // Find words near the cursor
-                words.forEach(word => {
-                    const rect = word.getBoundingClientRect();
-                    const wordX = rect.left + rect.width / 2;
-                    const wordY = rect.top + rect.height / 2;
-                    
-                    const distance = Math.sqrt(Math.pow(x - wordX, 2) + Math.pow(y - wordY, 2));
-                    
-                    if (distance < 100) {
-                        const intensity = 1 - distance / 100;
-                        word.style.fontWeight = Math.floor(400 + intensity * 300);
-                    }
-                });
-            });
-        }
-
-        // Handle window resize
-        function handleResize() {
-            if (wordsLoaded) {
-                createTextPattern();
-                addInteractivity();
-            }
-        }
-
-        // Check if Papa Parse is loaded
-        function checkPapaParseLoaded() {
-            if (typeof Papa === 'undefined') {
-                console.error("Papa Parse library not loaded. Attempting to load it manually.");
-                const script = document.createElement('script');
-                script.src = "https://cdnjs.cloudflare.com/ajax/libs/papaparse/5.3.0/papaparse.min.js";
-                script.integrity = "sha512-ymgUftodXDCZ5tIW7Vn7Ixq4xDdfbFa9ztBNHsGReJxoNZ8KiYgniG6sc0IkcmXkn6n/9+pQ8uiw2fv3DW4D+g==";
-                script.crossOrigin = "anonymous";
-                script.referrerPolicy = "no-referrer";
-                script.onload = function() {
-                    console.log("Papa Parse loaded manually");
-                    loadWordsFromCSV();
-                };
-                script.onerror = function() {
-                    console.error("Failed to load Papa Parse. Using default words.");
-                    words = defaultWords;
-                    wordsLoaded = true;
-                    createTextPattern();
-                    addInteractivity();
-                };
-                document.head.appendChild(script);
-                return false;
-            }
-            return true;
-        }
-
-        // Function to proceed with initialization, with CSV parsing fallback
-        function initializeWithoutPapaParse() {
-            console.log("Initializing without PapaParse - using hard-coded words");
-            // Use our default words since we can't parse CSV
-            words = defaultWords;
-            wordsLoaded = true;
-            createTextPattern();
-            addInteractivity();
-        }
-
-        // Initialize the pattern
-        window.onload = function() {
-            updateLoadingStatus("Checking if CSV parser is loaded...");
+            // Resize canvas when window is resized
+            p.windowResized = function() {
+                p.resizeCanvas(p.windowWidth, p.windowHeight);
+                initializeWords();
+            };
             
-            // First check if Papa Parse is loaded
-            if (!checkPapaParseLoaded()) {
-                console.log("Waiting for Papa Parse to load");
-                // The callback in checkPapaParseLoaded will handle initialization
-                return;
-            }
-            
-            // Load words from CSV first, then create the pattern
-            loadWordsFromCSV();
-            
-            // Add window resize handler with debounce for better performance
-            let resizeTimer;
-            window.addEventListener('resize', () => {
-                clearTimeout(resizeTimer);
-                resizeTimer = setTimeout(handleResize, 250);
-            });
-        };
+        }, 'p5-canvas');
     </script>
 </body>
 </html>
