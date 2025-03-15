@@ -62,7 +62,7 @@
 <body>
     <div class="container" id="container">
         <div class="text-layer" id="textLayer">
-            <div class="loading">Loading words...</div>
+            <div class="loading">Loading words...<br><span id="loadingStatus" style="font-size: 14px; font-weight: normal;"></span></div>
         </div>
     </div>
 
@@ -91,58 +91,100 @@
 
         // Function to load words from CSV file
         function loadWordsFromCSV() {
-            fetch('./words.csv')
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('CSV file not found');
-                    }
-                    return response.text();
-                })
-                .then(csvData => {
-                    // Parse CSV data using PapaParse
-                    const results = Papa.parse(csvData, {
-                        header: true,
-                        skipEmptyLines: true
-                    });
-                    
-                    // Extract words from the parsed data
-                    if (results.data && results.data.length > 0) {
-                        // Try to find a column named 'word' or the first column
-                        words = results.data.map(row => {
-                            // If there's a column named 'word', use that
-                            if (row.word) return row.word;
-                            // If there's a column named 'Word', use that
-                            if (row.Word) return row.Word;
-                            // Otherwise use the first value
-                            return Object.values(row)[0];
-                        }).filter(word => word && word.trim() !== '');
-                    }
-                    
-                    // If no words were found, use our defaults
-                    if (words.length === 0) {
-                        console.warn("CSV file is empty. Using default words.");
-                        words = defaultWords;
-                    } else {
-                        console.log(`Successfully loaded ${words.length} words from CSV`);
-                    }
-                    
-                    wordsLoaded = true;
-                    
-                    // Now create the text pattern
-                    createTextPattern();
-                    addInteractivity();
-                })
-                .catch(error => {
-                    console.error("Error loading CSV:", error);
-                    
-                    // Use default words if CSV loading fails
+            // Try different possible paths to the CSV file
+            const possiblePaths = [
+                'words.csv',           // Same directory
+                './words.csv',         // Explicit current directory
+                '/words.csv',          // Root directory
+                '../words.csv',        // Parent directory
+                'assets/words.csv',    // Common subdirectory
+                window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/')) + '/words.csv' // Dynamic path based on current page
+            ];
+
+            // Add the absolute URL based on current page location
+            const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
+            possiblePaths.push(baseUrl + 'words.csv');
+
+            console.log("Attempting to load CSV from these locations:", possiblePaths);
+            
+            // Function to try loading from the next path
+            function tryNextPath(index) {
+                if (index >= possiblePaths.length) {
+                    console.error("Failed to load CSV from all possible paths");
+                    // Use default words if CSV loading fails from all locations
                     words = defaultWords;
                     wordsLoaded = true;
-                    
-                    // Create the text pattern even if there was an error
                     createTextPattern();
                     addInteractivity();
-                });
+                    return;
+                }
+
+                const path = possiblePaths[index];
+                console.log(`Attempting to load from: ${path}`);
+                
+                fetch(path)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`CSV file not found at ${path}`);
+                        }
+                        return response.text();
+                    })
+                    .then(csvData => {
+                        console.log(`Successfully fetched CSV from ${path}`);
+                        
+                        // Parse CSV data using PapaParse
+                        const results = Papa.parse(csvData, {
+                            header: true,
+                            skipEmptyLines: true
+                        });
+                        
+                        // Check if we have any data
+                        if (results.data && results.data.length > 0) {
+                            // Try to find a column named 'word' or the first column
+                            words = results.data.map(row => {
+                                // If there's a column named 'word', use that
+                                if (row.word) return row.word;
+                                // If there's a column named 'Word', use that
+                                if (row.Word) return row.Word;
+                                // Check for empty CSV with just headers but no data
+                                if (Object.values(row)[0] === "") return null;
+                                // Otherwise use the first value
+                                return Object.values(row)[0];
+                            }).filter(word => word && word.trim() !== '');
+                        }
+                        
+                        // If no words were found, use our defaults
+                        if (words.length === 0) {
+                            console.warn("CSV file is empty. Using default words.");
+                            words = defaultWords;
+                        } else {
+                            console.log(`Successfully loaded ${words.length} words from CSV`);
+                        }
+                        
+                        wordsLoaded = true;
+                        
+                        // Now create the text pattern
+                        createTextPattern();
+                        addInteractivity();
+                    })
+                    .catch(error => {
+                        console.error(`Error loading CSV from ${path}:`, error);
+                        // Try the next path
+                        tryNextPath(index + 1);
+                    });
+            }
+            
+            // Add status updates
+            function updateLoadingStatus(message) {
+                const statusElement = document.getElementById('loadingStatus');
+                if (statusElement) {
+                    statusElement.textContent = message;
+                }
+            }
+            
+            // Start trying paths
+            updateLoadingStatus("Searching for words.csv file...");
+            tryNextPath(0);
         }
 
         // Function to generate random words
